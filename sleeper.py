@@ -4,6 +4,9 @@
 
 import requests
 
+# Before swapping calls over from TEST_LEAGUE_ID to LEAGUE_ID: delete
+# dynasty.db and re-run database.py to rebuild it fresh (see CLAUDE.md's
+# Pre-Release Checklist for why -- roster_id isn't unique across leagues).
 LEAGUE_ID = "1364983086189649920"
 TEST_LEAGUE_ID = "1195237157114392576"
 BASE_URL = "https://api.sleeper.app/v1"

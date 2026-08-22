@@ -20,9 +20,12 @@ def get_survivor_results(league_id):
     way through the playoffs, however long it takes. It's the payout
     that happens at end of season, not the elimination process itself.
 
-    Returns a list of (week, team_name, points) in the order teams were
-    eliminated, plus a list of the team name(s) left standing — usually
-    one, but more if the pot ends up split.
+    Returns a list of (week, roster_id, team_name, points) in the order
+    teams were eliminated, plus a list of (roster_id, team_name) for
+    whoever's left standing — usually one, but more if the pot ends up
+    split. roster_id is included alongside team_name because database.py
+    needs it to write rows into survivor_status, which is keyed by
+    roster_id, not team name.
     """
     team_names_by_roster = get_team_names_by_roster(league_id)
 
@@ -67,11 +70,11 @@ def get_survivor_results(league_id):
         for roster_id in tied_lowest:
             alive.remove(roster_id)
             team_name = team_names_by_roster[roster_id]
-            eliminations.append((week, team_name, lowest_points))
+            eliminations.append((week, roster_id, team_name, lowest_points))
 
-    survivor_names = [team_names_by_roster[roster_id] for roster_id in alive]
+    survivors = [(roster_id, team_names_by_roster[roster_id]) for roster_id in alive]
 
-    return eliminations, survivor_names
+    return eliminations, survivors
 
 
 def get_start_sit_percentages(league_id):
@@ -94,11 +97,12 @@ def get_start_sit_percentages(league_id):
         pf = settings["fpts"] + settings["fpts_decimal"] / 100
         max_pf = settings["ppts"] + settings["ppts_decimal"] / 100
 
-        team_name = team_names_by_roster[roster["roster_id"]]
+        roster_id = roster["roster_id"]
+        team_name = team_names_by_roster[roster_id]
         start_sit_pct = pf / max_pf
-        results.append((team_name, start_sit_pct, pf, max_pf))
+        results.append((roster_id, team_name, start_sit_pct, pf, max_pf))
 
-    results.sort(key=lambda result: result[1], reverse=True)
+    results.sort(key=lambda result: result[2], reverse=True)
     return results
 
 
@@ -168,12 +172,13 @@ def get_faab_spending(league_id):
 
 
 if __name__ == "__main__":
-    eliminations, survivor_names = get_survivor_results(TEST_LEAGUE_ID)
+    eliminations, survivors = get_survivor_results(TEST_LEAGUE_ID)
 
     print("--- Survivor Pot ---")
-    for week, team_name, points in eliminations:
+    for week, roster_id, team_name, points in eliminations:
         print(f"Week {week}: {team_name} eliminated ({points} pts)")
 
+    survivor_names = [team_name for roster_id, team_name in survivors]
     if len(survivor_names) == 1:
         print(f"\nSurvivor: {survivor_names[0]}")
     else:
@@ -181,7 +186,7 @@ if __name__ == "__main__":
 
     print("\n--- Start/Sit % Leaderboard ---")
     start_sit_results = get_start_sit_percentages(TEST_LEAGUE_ID)
-    for rank, (team_name, pct, pf, max_pf) in enumerate(start_sit_results, start=1):
+    for rank, (roster_id, team_name, pct, pf, max_pf) in enumerate(start_sit_results, start=1):
         print(f"{rank}. {team_name} - {pct:.2%} ({pf} / {max_pf})")
 
     print("\n--- Season High Score Leaderboard ---")

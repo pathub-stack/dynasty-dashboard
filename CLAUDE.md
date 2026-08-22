@@ -130,9 +130,46 @@ A SQLite database (`dynasty.db`) stores data pulled from the Sleeper API. All da
 
 ### Updated build order
 Stage 1 — Local scripts (sleeper.py, calculations.py) ✅
-Stage 1.5 — Database layer (database.py) ← next
+Stage 1.5 — Database layer (database.py):
+- `create_tables()`, `insert_teams()`, `insert_weekly_scores()`,
+  `insert_survivor_status()`, `insert_start_sit()` ✅
+- `insert_faab_transactions()` ← next, but blocked on new groundwork first:
+  `get_faab_spending()` in calculations.py only has season-total spend per
+  team (from Sleeper's `waiver_budget_used`), not individual transactions.
+  The `faab_transactions` table wants one row per waiver claim with an
+  actual player name and amount, which needs:
+  1. A new `sleeper.py` function calling `/league/{league_id}/transactions/{week}`
+     (not built yet — the transactions endpoint hasn't been touched)
+  2. Resolving Sleeper's numeric player_ids into real player names via
+     `/players/nfl` — a large, mostly-static file Sleeper says to cache
+     and refetch at most ~once a day, not call casually per-request
 Stage 2 — Flask web app (app.py)
 Stage 3 — Polished UI
+
+---
+
+## Pre-Release Checklist
+
+**Before switching from `TEST_LEAGUE_ID` to the real `LEAGUE_ID`** (in
+`sleeper.py`, and anywhere it's passed into `database.py`'s insert
+functions): delete `dynasty.db` and re-run `database.py` (via its
+`create_tables()`/insert functions) to rebuild it fresh from the real
+league's data.
+
+**Why:** `dynasty.db` is fully regenerable from the Sleeper API — nothing
+in it is hand-entered. Its tables are keyed by `roster_id`, which Sleeper
+only guarantees is unique *within one league*, not globally. Test league
+and real league data happening to share `roster_id` numbers means old
+test rows would mostly get silently overwritten by `INSERT OR REPLACE`
+when pointed at the real league, but if the team counts ever differ,
+leftover test-league rows could stick around unnoticed. Deleting the file
+and rebuilding removes that risk entirely rather than relying on it
+working out.
+
+```bash
+rm dynasty.db          # or delete it manually in the file explorer
+python database.py     # rebuilds all tables fresh, from LEAGUE_ID's data
+```
 
 ---
 

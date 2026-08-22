@@ -213,4 +213,171 @@ pf = settings["fpts"] + settings["fpts_decimal"] / 100
 ```
 
 ---
-*Last updated: 2026-08-08*
+
+## Session 2026-08-22 — Built database.py (Stage 1.5, database layer)
+
+### What we built
+
+**`database.py`** — the SQLite layer sitting between the Sleeper API and
+(eventually) Flask:
+- `get_connection()` — opens `dynasty.db`
+- `create_tables()` — creates all 5 tables from the schema, safe to
+  re-run (`IF NOT EXISTS`)
+- `insert_teams()` — writes roster_id/team_name/owner_name, one API call
+- `insert_weekly_scores()` — loops every played week, one API call each,
+  writes roster_id/week/points
+- `insert_survivor_status()` — reuses `calculations.py`'s existing
+  elimination logic instead of re-implementing it, writes
+  `week_eliminated` (NULL = still alive)
+- `insert_start_sit()` — snapshots season-to-date PF/Max PF/% per team,
+  tagged with the current week
+- `insert_faab_transactions()` — **not built yet, next session.** Real
+  per-transaction data (player name + amount per waiver claim) needs a
+  new `sleeper.py` function hitting `/transactions/{week}` plus resolving
+  player_ids to names via `/players/nfl` — neither exists yet, and it's
+  a fair amount of new ground, so we scoped it out rather than force a
+  quick placeholder that didn't match the table's actual design.
+
+Also had to touch `calculations.py`: `get_survivor_results()` and
+`get_start_sit_percentages()` only returned `team_name`, but the database
+writes need `roster_id` (that's the actual foreign key / primary key —
+team names aren't unique-safe to key off of). Added `roster_id` to both
+functions' return tuples instead of re-deriving the same lookup logic
+inside `database.py`.
+
+### New concepts learned
+
+**`sqlite3` is built into Python** — no `pip install` needed, unlike
+`requests`/`flask`. First package we've used that didn't need installing.
+
+**Connection / cursor, mapped to what I already know:**
+`sqlite3.connect("dynasty.db")` = connecting to an instance (except the
+"instance" is just a file — SQLite creates it on connect if it doesn't
+exist yet). `connection.cursor()` = the thing that actually runs SQL and
+holds results. `connection.commit()` = `COMMIT` — nothing's saved to the
+file until you call it; everything since the connection opened is one
+uncommitted transaction.
+
+**`IF NOT EXISTS` = idempotency.** Makes `create_tables()` safe to call
+every time the app starts, instead of erroring on tables that already
+exist. This is going to matter once Flask calls it on every startup.
+
+**`?` placeholders instead of f-strings in SQL.**
+```python
+cursor.execute(
+    "INSERT OR REPLACE INTO teams (roster_id, team_name, owner_name) VALUES (?, ?, ?)",
+    (roster_id, team_name, owner_name),
+)
+```
+Same reason you'd never concatenate raw values into a SQL string on a
+real database — avoids SQL injection. Low risk here since it's just API
+data, but built the habit anyway since it costs nothing.
+
+**`INSERT OR REPLACE` = upsert.** Since `roster_id` (or `roster_id, week`
+for the composite-key tables) is the primary key, a plain `INSERT` would
+error the second time a function ran — `OR REPLACE` overwrites instead.
+Same idea as a SQL `MERGE`. This is what makes every insert function safe
+to re-run on a schedule as the season progresses.
+
+**Composite primary keys** (`PRIMARY KEY (roster_id, week)`) work exactly
+like in SQL — `weekly_scores` and `start_sit` both use this so
+`(roster_id=1, week=1)` and `(roster_id=1, week=2)` are correctly treated
+as different rows, not a duplicate-key error.
+
+**One connection reused across a whole loop, not reopened per row.**
+`insert_weekly_scores()` loops 17 weeks × 12 teams but opens the
+connection once, outside the loop, and commits once at the end — same as
+not reconnecting to SQL Server for every single row you insert.
+
+**A real SQL `JOIN`, first one in this project:**
+```sql
+SELECT teams.team_name, survivor_status.week_eliminated
+FROM survivor_status
+JOIN teams ON teams.roster_id = survivor_status.roster_id
+```
+`survivor_status`/`start_sit` only store `roster_id` — team names live in
+`teams` and shouldn't be duplicated — so reading them back in a
+human-readable way needs an actual join, same as SQL Server.
+
+**`ORDER BY x IS NULL, x` — the NULLS-LAST trick.**
+`x IS NULL` evaluates to `0`/`1`, so sorting by that first pushes NULL
+rows to the end, then the second `x` sorts everyone else normally.
+Without it, SQLite puts NULLs *first* by default — which would've shown
+the survivor at the top of the elimination list instead of the bottom.
+✅ Good one to remember, comes up any time NULL means "hasn't happened
+yet."
+
+**Reusing existing logic instead of duplicating it across files.**
+Rather than re-writing the survivor tie-elimination rule (the one with
+the bug we already caught once) inside `database.py`, changed
+`calculations.py`'s function to return what both files need and imported
+it. One source of truth for that rule.
+
+**Changing a function's return shape is a breaking change for every
+caller.** Adding `roster_id` to `get_survivor_results()`'s output meant
+`calculations.py`'s own `__main__` block broke until updated to match —
+had to fix the unpacking there too, twice (once for survivor, once for
+start_sit). Same as changing a stored proc's result columns — every
+caller needs to know.
+
+**Sleeper only exposes PF/Max PF as running season totals, not
+historical per-week snapshots.** `insert_start_sit()` can't reconstruct
+"what was the % after week 3" retroactively — it can only capture "as of
+right now." Since `start_sit`'s primary key is `(roster_id, week)`
+though, re-running this function every week (rather than always
+overwriting the same row) naturally builds up a real week-by-week history
+over the season anyway. ✅ Nice case where the schema design does the
+work for you.
+
+**`roster_id` is only unique within one league, not globally.** Test
+league and next season's real league will both hand out `roster_id`
+1–12, but they refer to completely different teams. Nothing broke from
+this since every lookup dict gets rebuilt fresh per `league_id` passed
+in, but it's the reason we added a Pre-Release Checklist to `CLAUDE.md`:
+delete `dynasty.db` and rebuild fresh before switching from
+`TEST_LEAGUE_ID` to the real `LEAGUE_ID`, rather than relying on
+`INSERT OR REPLACE` to sort it out silently.
+
+### Mistakes & fixes
+
+No actual crashes this session, but a "gotcha avoided by testing
+immediately": every time a function's return tuple shape changed
+(`get_survivor_results`, `get_start_sit_percentages`), I ran
+`calculations.py` right after to confirm its own `__main__` block still
+worked — it didn't, until the unpacking there was updated too. ✅ Good
+habit: re-run a file immediately after changing what a function returns,
+don't assume other callers are fine just because the function itself
+runs.
+
+### Questions / still confused about ❓
+
+- None new this session — the FAAB gap isn't confusion, just genuinely
+  unbuilt work (new endpoint + player-id resolution) scoped into next
+  session instead of rushed.
+
+### Code snippets worth remembering
+
+```python
+# The upsert pattern -- reused for every insert function in database.py
+cursor.execute(
+    "INSERT OR REPLACE INTO teams (roster_id, team_name, owner_name) VALUES (?, ?, ?)",
+    (roster_id, team_name, owner_name),
+)
+connection.commit()
+```
+
+```sql
+-- JOIN back to teams to read roster_id-keyed tables in a human-readable way
+SELECT teams.team_name, start_sit.percentage
+FROM start_sit
+JOIN teams ON teams.roster_id = start_sit.roster_id
+ORDER BY start_sit.percentage DESC;
+```
+
+```sql
+-- NULLS-LAST trick -- x IS NULL sorts 0/1, so NULL rows go last
+ORDER BY survivor_status.week_eliminated IS NULL, survivor_status.week_eliminated;
+```
+
+---
+*Last updated: 2026-08-22*
