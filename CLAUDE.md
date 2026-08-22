@@ -133,3 +133,20 @@ Stage 1 — Local scripts (sleeper.py, calculations.py) ✅
 Stage 1.5 — Database layer (database.py) ← next
 Stage 2 — Flask web app (app.py)
 Stage 3 — Polished UI
+
+---
+
+## Cross-Project Notes Live in Obsidian
+
+Vault path: `C:\Users\patri\Documents\pats-synced-vault`
+
+- **`Dynasty Notes.md`** — ideas/context/future-improvement ideas for this
+  project and `fantasy-football-rankings` together. This is separate from
+  `LEARNING_NOTES.md` below — add an idea here when one comes up, even if
+  it's not something to build right now.
+- **`Learning Notes/Python.md`** — for Python concepts general enough to
+  reuse outside this one project. `LEARNING_NOTES.md` (below, in this
+  repo) stays the primary session-by-session Python journal for this
+  project specifically — nothing about that workflow changes.
+- **`Learning Notes/Git & GitHub.md`** — git/GitHub reference, shared
+  across both projects.
