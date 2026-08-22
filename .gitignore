@@ -1,0 +1,25 @@
+# Python virtual environment - huge, and specific to this machine/OS.
+# Anyone setting this up elsewhere runs: python -m venv venv, then
+# pip install -r requirements.txt
+venv/
+env/
+.venv/
+
+# Compiled Python bytecode cache
+__pycache__/
+*.pyc
+
+# Local Claude Code tool settings - contains machine-specific absolute
+# paths, shouldn't follow the project to another computer
+.claude/
+
+# SQLite database (mentioned in CLAUDE.md as the planned data layer) -
+# generated from the Sleeper API, not something to version control
+*.db
+
+# Secrets, if this project ever adds any (e.g. a Flask secret key)
+.env
+
+# OS junk files
+.DS_Store
+Thumbs.db
