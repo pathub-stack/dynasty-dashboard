@@ -143,8 +143,24 @@ Stage 1.5 — Database layer (database.py):
   2. Resolving Sleeper's numeric player_ids into real player names via
      `/players/nfl` — a large, mostly-static file Sleeper says to cache
      and refetch at most ~once a day, not call casually per-request
-Stage 2 — Flask web app (app.py)
-Stage 3 — Polished UI
+Stage 2 — Flask web app (app.py):
+- Basic app + routes for weekly scoreboard, survivor standings, start/sit %
+- Error logging around sleeper.py's API calls (Python's `logging` module —
+  log failures instead of crashing the page) — confirmed for v1 2026-08-22
+- Simple traffic monitoring: a `page_visits` table (route, timestamp)
+  written via a Flask `before_request` hook — confirmed for v1 2026-08-22,
+  no third-party analytics needed at this scale
+- Deploy to Render.com
+Stage 3 — Polished UI:
+- Deliberate design direction (not a generic/default pass) — confirmed
+  for v1 2026-08-22, avoid the site looking like a typical AI-generated
+  page. Needs a concrete reference point (e.g. Sleeper's own app? ESPN
+  Fantasy?) before starting — ask the developer if not yet decided.
+- Tables and leaderboards, charts if wanted
+
+Power rankings (weekly subjective 1-12 rank + week-over-week change
+indicator) considered and intentionally deferred to "someday," not v1 —
+full scoping notes in Obsidian's `Dynasty Dashboard Feature.md`.
 
 ---
 
