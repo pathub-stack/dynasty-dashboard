@@ -4,6 +4,8 @@
 
 import sqlite3
 
+from sleeper import get_league_users, get_league_rosters, TEST_LEAGUE_ID
+
 DB_NAME = "dynasty.db"
 
 
@@ -83,6 +85,59 @@ def create_tables():
     connection.close()
 
 
+def insert_teams(league_id):
+    """Pull team + owner info from Sleeper and write it into the teams table.
+
+    Uses INSERT OR REPLACE so this is safe to re-run any time (e.g. once a
+    week) -- each roster_id just gets overwritten with fresh data instead
+    of erroring because the row already exists. Same idea as a SQL
+    MERGE/upsert.
+    """
+    users = get_league_users(league_id)
+    rosters = get_league_rosters(league_id)
+
+    # Same "chase the id through a lookup table" pattern as sleeper.py's
+    # get_team_names_by_roster(), except we need TWO things off each user
+    # (team name AND owner display name), so we build both dicts here
+    # instead of reusing that function.
+    team_name_by_owner = {}
+    owner_name_by_owner = {}
+    for user in users:
+        owner_name_by_owner[user["user_id"]] = user["display_name"]
+        team_name_by_owner[user["user_id"]] = user["metadata"].get(
+            "team_name", user["display_name"]
+        )
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    for roster in rosters:
+        roster_id = roster["roster_id"]
+        owner_id = roster["owner_id"]
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO teams (roster_id, team_name, owner_name)
+            VALUES (?, ?, ?)
+            """,
+            (roster_id, team_name_by_owner[owner_id], owner_name_by_owner[owner_id]),
+        )
+
+    connection.commit()
+    connection.close()
+
+
 if __name__ == "__main__":
     create_tables()
     print(f"Tables created in {DB_NAME}")
+
+    insert_teams(TEST_LEAGUE_ID)
+    print("Teams inserted")
+
+    # Quick sanity check -- read back what actually landed in the table.
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT roster_id, team_name, owner_name FROM teams")
+    for row in cursor.fetchall():
+        print(row)
+    connection.close()
