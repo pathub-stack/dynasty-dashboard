@@ -190,7 +190,7 @@ pip freeze > requirements.txt
 - Explain the *why* behind every decision, not just the *what*
 - Use SQL analogies where helpful (API = source tables, functions = stored procedures, etc.)
 - Build incrementally — get something working before adding complexity
-- Notion learning notes are maintained separately and updated after each session
+- Cross-project learning notes are maintained in Obsidian (see CLAUDE.md) and updated after each session
 - League bylaws Google Doc: shared separately
 
 ---

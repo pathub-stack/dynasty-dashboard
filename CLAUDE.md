@@ -140,10 +140,13 @@ Stage 3 — Polished UI
 
 Vault path: `C:\Users\patri\Documents\pats-synced-vault`
 
-- **`Dynasty Notes.md`** — ideas/context/future-improvement ideas for this
-  project and `fantasy-football-rankings` together. This is separate from
+- **`Dynasty Dashboard Feature.md`** — feature roadmap: ideas, context, and
+  "someday" features for this project specifically. This is separate from
   `LEARNING_NOTES.md` below — add an idea here when one comes up, even if
-  it's not something to build right now.
+  it's not something to build right now. Read it at the start of a session
+  too, since ideas get added ad hoc outside of Claude Code sessions.
+  (`fantasy-football-rankings` has its own equivalent file,
+  `Dynasty Rankings Feature.md`.)
 - **`Learning Notes/Python.md`** — for Python concepts general enough to
   reuse outside this one project. `LEARNING_NOTES.md` (below, in this
   repo) stays the primary session-by-session Python journal for this

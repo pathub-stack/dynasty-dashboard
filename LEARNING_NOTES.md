@@ -16,7 +16,9 @@ pot, start/sit %, and FAAB spending — stuff I'd otherwise track manually.
 
 Using this project to learn Python properly rather than just following tutorials.
 Claude Code (in VS Code) helps me build and explains everything as we go.
-Periodically I paste this file into Claude.ai and it syncs to my Notion workspace.
+This file stays the session-by-session journal for this project specifically;
+general Python concepts also get added to `Learning Notes/Python.md` in my
+Obsidian vault so they're reusable outside this one project.
 
 ---
 

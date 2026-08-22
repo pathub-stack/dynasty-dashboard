@@ -9,7 +9,7 @@ Follow these steps every time you open VS Code to make sure you're in the right 
 **File → Open Folder** → navigate to `dynasty-dashboard` on your Desktop
 
 ```
-C:\Users\patri\Desktop\dynasty-dashboard
+C:\Users\patri\Desktop\code-projects\dynasty-dashboard
 ```
 
 ---
@@ -40,12 +40,12 @@ pwd
 
 Should return:
 ```
-C:\Users\patri\Desktop\dynasty-dashboard
+C:\Users\patri\Desktop\code-projects\dynasty-dashboard
 ```
 
 If it doesn't, navigate there:
 ```bash
-cd C:\Users\patri\Desktop\dynasty-dashboard
+cd C:\Users\patri\Desktop\code-projects\dynasty-dashboard
 ```
 
 ---
@@ -68,9 +68,9 @@ after each session.
 
 ---
 
-## Syncing Learning Notes to Notion
-After any session where Claude Code updated `LEARNING_NOTES.md`:
-1. Open `LEARNING_NOTES.md`
-2. Copy the full contents
-3. Paste into Claude.ai chat
-4. Claude.ai will sync it to your Notion page automatically
+## Syncing Learning Notes to Obsidian
+After any session where Claude Code updated `LEARNING_NOTES.md`, general
+(non-project-specific) Python concepts also get pulled into
+`Learning Notes/Python.md` in the Obsidian vault
+(`C:\Users\patri\Documents\pats-synced-vault`) — Claude Code does this as
+part of the session when it applies, no manual copy/paste step needed.
