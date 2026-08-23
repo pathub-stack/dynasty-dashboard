@@ -695,4 +695,120 @@ WHERE week = (SELECT MAX(week) FROM start_sit AS latest
 ```
 
 ---
+
+## Session 2026-08-23 (cont'd again) — Deployed to Render.com (Stage 2 done)
+
+### What we built
+
+Nothing new in the codebase itself beyond three small changes to make
+deployment possible:
+- `requirements.txt` — added `gunicorn` (the production WSGI server
+  Flask's own dev server warns you not to use in production) by hand,
+  not via local `pip install` — gunicorn depends on Unix-only modules
+  and can't even run on Windows. Render's build runs
+  `pip install -r requirements.txt` inside its own Linux container, so
+  it installs and works fine there despite never running locally.
+- `database.py` — `DB_NAME` now reads `os.environ.get("DB_PATH", "dynasty.db")`
+  instead of being hardcoded, so it can point at Render's persistent
+  disk in production while still defaulting to the local file for dev.
+- Render dashboard config (no repo file for this): a Starter-tier web
+  service, a 1 GB disk mounted at `/var/data`, `DB_PATH` set to
+  `/var/data/dynasty.db`, build command `pip install -r requirements.txt`,
+  start command `gunicorn app:app`.
+
+Live at https://dynasty-dashboard-ijio.onrender.com, running on
+`TEST_LEAGUE_ID` data for now.
+
+### New concepts learned
+
+**Why the free tier wasn't an option.** Render's free web service tier
+has *ephemeral* disk — wiped on every redeploy, and can reset when the
+service spins down after 15 min of inactivity. Most of this project's
+tables are fully re-derivable from Sleeper's API (just re-run
+`database.py`), but `start_sit` isn't — it only has history because we
+snapshot it over time, and Sleeper never exposes that history itself.
+Losing it on every redeploy would be a real, permanent data loss, not
+just an inconvenience. A small paid "Starter" instance was needed
+specifically because Render's persistent Disks aren't available on the
+free tier at all.
+
+**A platform's build environment isn't your local environment.**
+`gunicorn` can't run on Windows, so it was never going to be
+`pip install`ed locally or show up via `pip freeze` — it was added to
+`requirements.txt` by hand. This only works because Render's build step
+runs entirely inside its own Linux container: "install this project's
+dependencies" doesn't mean "using my machine," it means "using whatever
+OS the deploy target actually is." ✅ First time a dependency existed
+that the dev environment itself couldn't touch.
+
+**`os.environ.get(key, default)` as an environment-aware config
+switch.** Same `?? COALESCE`-style pattern as `dict.get()` with a
+fallback, just reading from the *environment* instead of a dictionary —
+no `DB_PATH` set (local machine) falls back to `"dynasty.db"`; `DB_PATH`
+set (Render) overrides it. This is *the* standard way an app tells the
+difference between "running locally" and "running in production"
+without needing separate code paths or config files per environment.
+
+**A production WSGI server never runs your `if __name__ == "__main__":`
+block at all.** `gunicorn app:app` imports `app.py` as a module and
+talks to the `app` object directly — it never executes the file as a
+script, so `app.run(debug=True)` inside that guard simply never runs in
+production. This is *why* `create_tables()` had to be called at the top
+level of `app.py` instead of inside that block (see last entry) — it's
+also why Flask's `debug=True` mode (which you'd never want live, since
+it can expose a debugger console) automatically isn't a production
+concern at all, with zero extra code needed to disable it.
+
+**Verifying persistence by actually testing it, not just trusting the
+setup.** Confirmed the disk was really wired up by: checking the env var
+existed (`echo $DB_PATH`), checking the *app itself* resolved the same
+path (`python -c "from database import DB_NAME; print(DB_NAME)"` — this
+is the one that actually proves it, since it uses the real code path
+instead of just the shell's environment), running the real
+population script, then **triggering an actual redeploy and confirming
+the same data was still there afterward** without re-running anything.
+✅ That last step is the one that actually proves persistence — anything
+before it could still be true even if the disk wasn't really mounted
+(the container's own temporary filesystem would "work" too, right up
+until it gets wiped).
+
+**SQLite doesn't enforce `FOREIGN KEY` constraints by default.** Came up
+while reasoning through what happens if `TEST_LEAGUE_ID` and `LEAGUE_ID`
+rows ever mixed in the same table without a clean rebuild — the
+schema *declares* `FOREIGN KEY (roster_id) REFERENCES teams(roster_id)`,
+but SQLite only actually checks that if a connection runs
+`PRAGMA foreign_keys = ON`, which `database.py` never does. So a stale
+row referencing a `roster_id` that no longer matches the right team
+wouldn't error — it'd just silently join against the wrong team's name.
+❓ Worth deciding at some point whether to turn this pragma on for real
+enforcement, or leave it as documentation-only like it is now — no
+decision made this session, just flagged.
+
+### Mistakes & fixes
+
+No mistakes this session — deployment went cleanly because each piece
+was verified as we went (env var, then app-level path resolution, then
+population, then the actual redeploy-survival test) instead of doing
+everything at once and hoping it worked.
+
+### Questions / still confused about ❓
+
+- Whether to turn on `PRAGMA foreign_keys = ON` for real constraint
+  enforcement (see above) — not urgent, just noted.
+- Haven't yet done the actual `TEST_LEAGUE_ID` → `LEAGUE_ID` swap (real
+  draft context: `BYLAWS.md` has the real draft as 2026-08-23, i.e.
+  around now) — Pre-Release Checklist in `CLAUDE.md` is updated to cover
+  both the local *and* Render copies of the database, but the swap
+  itself hasn't happened yet.
+
+### Code snippets worth remembering
+
+```python
+# Environment-aware config default -- same idea as dict.get()'s fallback,
+# just reading from the environment instead of a dict. No env var set
+# (local dev) falls back to the default; set (production) overrides it.
+DB_NAME = os.environ.get("DB_PATH", "dynasty.db")
+```
+
+---
 *Last updated: 2026-08-23*

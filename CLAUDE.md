@@ -171,8 +171,18 @@ Stage 2 — Flask web app (app.py):
 - Simple traffic monitoring: a `page_visits` table (route, timestamp)
   written via a Flask `before_request` hook — confirmed for v1 2026-08-22,
   built 2026-08-23 ✅, no third-party analytics needed at this scale
-- Deploy to Render.com ← next, but needs the developer's Render.com
-  account/GitHub connection — not something to do unattended
+- Deploy to Render.com ✅ 2026-08-23. Live at
+  https://dynasty-dashboard-ijio.onrender.com — Starter instance (needed
+  for a persistent disk, since the free tier's disk is wiped on every
+  redeploy/spin-down), disk mounted at `/var/data`, `DB_PATH` env var
+  pointing `database.py`'s `DB_NAME` at `/var/data/dynasty.db`. Verified
+  persistence for real: ran `python database.py` via Render's Shell,
+  confirmed the live pages matched, triggered a Manual Deploy, and
+  confirmed the same data was still there afterward without re-running
+  anything. `players_cache.json` was deliberately NOT put on the disk —
+  it's not league data, just a cache that's harmless to refetch after
+  each redeploy.
+- Stage 2 is now fully complete.
 Stage 3 — Polished UI:
 - Deliberate design direction (not a generic/default pass) — confirmed
   for v1 2026-08-22, avoid the site looking like a typical AI-generated
@@ -190,23 +200,42 @@ full scoping notes in Obsidian's `Dynasty Dashboard Feature.md`.
 
 **Before switching from `TEST_LEAGUE_ID` to the real `LEAGUE_ID`** (in
 `sleeper.py`, and anywhere it's passed into `database.py`'s insert
-functions): delete `dynasty.db` and re-run `database.py` (via its
+functions): delete the database file and re-run `database.py` (via its
 `create_tables()`/insert functions) to rebuild it fresh from the real
-league's data.
+league's data. **Do this in both places** — they're separate files:
 
-**Why:** `dynasty.db` is fully regenerable from the Sleeper API — nothing
-in it is hand-entered. Its tables are keyed by `roster_id`, which Sleeper
-only guarantees is unique *within one league*, not globally. Test league
-and real league data happening to share `roster_id` numbers means old
-test rows would mostly get silently overwritten by `INSERT OR REPLACE`
-when pointed at the real league, but if the team counts ever differ,
-leftover test-league rows could stick around unnoticed. Deleting the file
-and rebuilding removes that risk entirely rather than relying on it
-working out.
+- **Locally:** `dynasty.db` in the project folder.
+- **On Render:** `/var/data/dynasty.db` on the persistent disk, via the
+  service's Shell tab. Local and production are two independent files —
+  fixing one doesn't touch the other.
+
+**Why:** the database is fully regenerable from the Sleeper API — nothing
+in it is hand-entered. Its tables (other than `page_visits`) are keyed by
+`roster_id`, which Sleeper only guarantees is unique *within one league*,
+not globally. Test league and real league data happening to share
+`roster_id` numbers means old test rows would mostly get silently
+overwritten by `INSERT OR REPLACE` when pointed at the real league, but
+if the team counts ever differ, leftover test-league rows could stick
+around unnoticed — and since `database.py` never turns on SQLite's
+`PRAGMA foreign_keys`, that wouldn't even error, just silently display
+wrong data joined against the wrong team. Deleting the file and
+rebuilding removes that risk entirely rather than relying on it working
+out.
+
+Deleting the whole file also wipes `page_visits` (traffic history),
+even though that table has nothing to do with `roster_id` or league
+data — decided 2026-08-23 that's an acceptable, low-stakes trade-off for
+the simplicity of one clean wipe-and-rebuild step, rather than writing a
+more surgical "delete these tables, keep that one" script.
 
 ```bash
+# Locally:
 rm dynasty.db          # or delete it manually in the file explorer
 python database.py     # rebuilds all tables fresh, from LEAGUE_ID's data
+
+# On Render, via the service's Shell tab:
+rm /var/data/dynasty.db
+python database.py
 ```
 
 ---
