@@ -924,4 +924,81 @@ body {
 ```
 
 ---
+
+## Session 2026-08-23 (cont'd once more) — Debugging "the CSS isn't showing up"
+
+### What happened
+
+After the Stage 3 design pass, the live page kept showing the *old*
+plain layout even after a hard refresh and an incognito window. Spent a
+while ruling things out in order:
+
+1. **Was the server actually serving the new code?** Checked server
+   logs + `curl` from the terminal -- confirmed 200s, confirmed the
+   *actual* HTML being returned had the new hub-card markup. Server was
+   never the problem.
+2. **View page source in the browser** -- confirmed the browser really
+   was receiving the new HTML. So it wasn't a caching issue on the HTML
+   itself either.
+3. **Checked `style.css`'s response headers via curl** -- correct
+   `Content-Type: text/css`, right file size. Ruled out a MIME-type
+   mismatch (a real thing that silently breaks stylesheets in some
+   setups, just wasn't this one).
+4. **DevTools Network tab, searched for "style"** -- found the real
+   clue: the request wasn't just failing, it wasn't happening *at all*.
+   Not even as a cached or blocked entry -- completely absent.
+5. **Navigated directly to the `style.css` URL** -- loaded fine as raw
+   text. So the file and the URL were both completely fine; only
+   loading it *as a linked stylesheet* was the problem.
+6. That combination (works standalone, invisible when loaded via
+   `<link>`) pointed at a browser extension intercepting the request
+   before Chrome's network layer ever logged it. Checked
+   `chrome://extensions`, disabled everything, and the page rendered
+   correctly with `style.css` now showing up (as a real request, status
+   304) in the Network tab.
+
+**Turned out to be one of the installed extensions** (Dark Reader alone
+wasn't it, despite being the obvious suspect for a dark-themed page --
+disabling *all* extensions was what actually fixed it). Not worth fully
+bisecting which one specifically, since this only matters for local dev
+on `localhost` -- extensions can just stay off for that.
+
+### New concepts learned
+
+**A request that's silently *absent* from Network tab is a different
+bug than a request that's *failed*.** A 404 or blocked request still
+shows up as a row (usually red). A resource interception happening
+*before* the browser's network stack ever logs anything shows up as
+nothing at all -- no row, no error, no trace. That specific
+symptom (not "failed," just "never attempted") is the tell for a
+browser extension or content-script intercepting the request early,
+not a server-side or code problem.
+
+**Isolating "works standalone" vs. "works as a linked resource" as a
+diagnostic split.** Navigating directly to `/static/style.css` proved
+the URL and file were fine on their own. The only difference between
+that and the broken case was *how* it was being loaded (typed into the
+address bar vs. fetched automatically by a `<link>` tag) -- which
+narrowed the problem down to something browser-side reacting
+specifically to it being loaded as a stylesheet resource, not to
+anything about the file or server at all.
+
+**When to stop debugging your own code.** Every check on the app side
+(server logs, curl, response headers, page source) came back clean.
+At that point the responsible move was to stop assuming the bug was in
+`app.py`/`style.css` and start checking the browser environment itself
+instead -- extensions, in this case. ✅ Worth remembering: once you've
+verified the same thing works correctly from multiple independent
+angles (server logs *and* curl *and* direct navigation), the bug
+probably isn't where you're looking.
+
+### Questions / still confused about ❓
+
+- Never pinned down *which specific* extension was blocking it (7TV,
+  Reddit Enhancement Suite, LastPass, Okta Browser Plugin, and a couple
+  others were all still on the suspect list when we stopped, since
+  disabling everything at once was enough to confirm the fix without
+  needing to bisect further).
+
+---
 *Last updated: 2026-08-23*
