@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Week {{ week }} Scoreboard{% endblock %}
+{% block content %}
+<h1>Week {{ week }} Scoreboard</h1>
+<table border="1" cellpadding="6">
+    <tr><th>Rank</th><th>Team</th><th>Points</th></tr>
+    {% for score in scores %}
+    <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ score["team_name"] }}</td>
+        <td>{{ score["points"] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

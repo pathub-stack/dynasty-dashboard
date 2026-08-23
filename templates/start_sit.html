@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Start/Sit % Leaderboard{% endblock %}
+{% block content %}
+<h1>Start/Sit % Leaderboard</h1>
+<p>Highest % earns pick 1.13 in the rookie draft.</p>
+<table border="1" cellpadding="6">
+    <tr><th>Rank</th><th>Team</th><th>PF</th><th>Max PF</th><th>%</th></tr>
+    {% for row in leaderboard %}
+    <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ row["team_name"] }}</td>
+        <td>{{ row["pf"] }}</td>
+        <td>{{ row["max_pf"] }}</td>
+        <td>{{ "%.2f"|format(row["percentage"] * 100) }}%</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

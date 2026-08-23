@@ -507,4 +507,192 @@ if transaction["type"] != "waiver" or transaction["status"] != "complete":
 ```
 
 ---
+
+## Session 2026-08-23 (cont'd) — Built app.py (Stage 2, minus deployment)
+
+### What we built
+
+**`app.py`** — the actual Flask web app, reading `dynasty.db` directly
+(never calls the Sleeper API itself):
+- `/` — home page
+- `/scoreboard` — latest week's scores, ranked
+- `/survivor` — who's still alive / eliminated and when
+- `/start-sit` — PF/Max PF % leaderboard, using each team's *most recent*
+  row (start_sit has one row per team per week)
+- A `before_request` hook that logs every request into a new
+  `page_visits` table (route + timestamp) — simple traffic monitoring,
+  no third-party analytics
+- Calls `create_tables()` on startup so the schema (including the new
+  `page_visits` table) always exists before any route runs
+
+**`templates/`** — `base.html` (nav + layout every page extends) plus
+one template per route. Deliberately plain/unstyled — Stage 3 is the
+actual design pass, so this stays focused on data/routes.
+
+**`sleeper.py` + `database.py`** — added the error logging Stage 2 also
+called for: `sleeper.py` now has one `_get_json()` helper every API call
+goes through, which logs failures and re-raises; `database.py`'s insert
+functions catch that, log a "skipped this refresh" message, and roll
+back instead of committing partial data or crashing.
+
+### New concepts learned
+
+**Routes = a stored procedure triggered by a URL instead of a call.**
+`@app.route("/scoreboard")` above a function means "when a browser asks
+for this path, run this function and send back whatever it returns" —
+same shape as a stored proc, just invoked by an HTTP request instead of
+`EXEC`.
+
+**Jinja templates = parameterized views.** `render_template("scoreboard.html", week=latest_week, scores=scores)`
+hands data to an HTML file the same way you'd pass parameters into a
+view/report — the template just displays what it's given, same
+separation as "the query decides the data, the report decides the
+layout."
+
+**Two different connections to the same database, on purpose.**
+`app.py` has its own `get_db_connection()` instead of reusing
+`database.py`'s, because it sets `row_factory = sqlite3.Row` — that
+makes a row behave like a dict (`row["team_name"]`) instead of a plain
+tuple (`row[1]`), which is what templates need to read columns by name.
+`database.py`'s connection stays plain tuples since its code already
+unpacks by position everywhere. ✅ Good pattern: the same underlying
+resource can have more than one "flavor" of connection depending on who's
+using it and how they need the data shaped.
+
+**Greatest-n-per-group, in real SQL.** `/start-sit` needed each team's
+*most recent* row from `start_sit`, not every week they've ever had:
+```sql
+SELECT teams.team_name, start_sit.pf, start_sit.max_pf, start_sit.percentage
+FROM start_sit
+JOIN teams ON teams.roster_id = start_sit.roster_id
+WHERE start_sit.week = (
+    SELECT MAX(week) FROM start_sit AS latest
+    WHERE latest.roster_id = start_sit.roster_id
+)
+ORDER BY start_sit.percentage DESC
+```
+The subquery re-finds `MAX(week)` *per roster_id*, correlated to the
+outer row via `latest.roster_id = start_sit.roster_id` — same pattern as
+SQL Server's classic "latest record per group" problem, just without
+window functions (`ROW_NUMBER() OVER (PARTITION BY ...)`), which SQLite
+does actually support but this was simple enough not to need it.
+
+**Centralizing error handling in one function.** `sleeper.py`'s
+`_get_json()` is now the only place `requests.get()` gets called from —
+every public function (get_league_info, get_league_users, etc.) is just
+`return _get_json(url)`. One function decides how to log a failure
+instead of that logic getting copy-pasted into 6 different functions.
+Same instinct as `get_team_names_by_roster()` being the one place the
+users/rosters join happens.
+
+**Log, then re-raise vs. log and swallow.** `_get_json()` logs the
+failed URL *and then re-raises* the exception instead of returning
+`None` — the reasoning: sleeper.py is the layer closest to the actual
+failure (it knows *which URL* broke), but deciding what to *do* about a
+broken refresh (skip it? abort everything?) is a business decision that
+belongs to `database.py`, not to the API layer. Swallowing the error in
+sleeper.py and returning `None` would've meant every caller had to
+remember to check for `None`, and forgetting even once would just
+convert a clear network error into a confusing `TypeError` somewhere
+else.
+
+**`try/except/finally` with a variable initialized before the `try`.**
+```python
+connection = None
+try:
+    ...
+    connection = get_connection()
+    ...
+    connection.commit()
+except requests.exceptions.RequestException:
+    logging.error(...)
+    if connection:
+        connection.rollback()
+finally:
+    if connection:
+        connection.close()
+```
+Setting `connection = None` up front means the `except`/`finally` blocks
+can safely check "did we even get this far?" without crashing on an
+undefined variable if the API call failed *before* a connection was ever
+opened. `finally` runs whether the `try` succeeded or the `except` fired
+— that's what guarantees the connection always gets closed either way.
+
+**Catching a specific exception type, not bare `except:`.** `except
+requests.exceptions.RequestException` only catches actual network/API
+failures — a real bug elsewhere in the function (a typo, a bad
+assumption about the API's shape) still crashes loudly instead of
+silently getting swallowed and logged as if it were a network problem.
+Catching everything with a bare `except:` would've hidden real bugs
+during development, not just handled the intended failure case.
+
+**Two different reasons a table needs a primary key.** `page_visits`
+uses a plain `id INTEGER PRIMARY KEY AUTOINCREMENT` — and unlike
+`faab_transactions` (fixed last session specifically *because*
+autoincrement was wrong there), this is the right call here: every
+other table gets `INSERT OR REPLACE`d with fresher data on each refresh,
+but a page visit is a one-time event with nothing to overwrite. ✅ The
+lesson isn't "autoincrement bad" — it's "pick the key based on whether
+re-running the write should overwrite something or create something new."
+
+**`app.py` calling `create_tables()` at import time, not inside
+`if __name__ == "__main__":`.** A production server (gunicorn on Render,
+later) imports `app.py` as a module rather than running it as a script,
+so code inside `if __name__ == "__main__":` wouldn't execute at all in
+that setup. Putting `create_tables()` at the top level means it runs
+every time the app starts, regardless of how it's launched.
+
+### Mistakes & fixes
+
+**Broad `taskkill` killed more than intended.** After testing the app,
+shut down the dev server with `taskkill /F /IM python.exe` — that kills
+*every* Python process on the machine by name, not just the one Flask
+server that was started, since the flag doesn't take a specific PID.
+Caught immediately after and switched to finding the actual PID
+listening on port 5000 (`Get-NetTCPConnection -LocalPort 5000`) and
+stopping just that one. ❓ Still tripped up once more right after
+switching approaches: Flask's debug-mode reloader actually runs as
+*two* processes (a parent + a child it spawns to do the real serving),
+so killing only the first PID left the port still bound — had to find
+and kill both with `Get-CimInstance Win32_Process` to see the real
+parent/child relationship. Worth remembering for next time: stopping a
+Flask dev server started with `debug=True` means killing 2 processes,
+not 1.
+
+### Questions / still confused about ❓
+
+- Exactly why Flask's debug reloader needs two OS processes instead of
+  one (something about the parent watching files for changes and
+  restarting the child) — works fine in practice, just don't have the
+  full mental model of *why* it's built that way yet.
+
+### Code snippets worth remembering
+
+```python
+# The "safe try/except/finally" shape used in every database.py insert
+# function now -- initialize the resource variable to None before the
+# try so except/finally can check "did we get this far?" safely
+connection = None
+try:
+    connection = get_connection()
+    ...
+    connection.commit()
+except requests.exceptions.RequestException:
+    logging.error("...: Sleeper API call failed, skipping this refresh")
+    if connection:
+        connection.rollback()
+finally:
+    if connection:
+        connection.close()
+```
+
+```sql
+-- Greatest-n-per-group: latest row per roster_id from a table with
+-- (roster_id, week) history
+SELECT * FROM start_sit
+WHERE week = (SELECT MAX(week) FROM start_sit AS latest
+              WHERE latest.roster_id = start_sit.roster_id)
+```
+
+---
 *Last updated: 2026-08-23*

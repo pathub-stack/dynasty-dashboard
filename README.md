@@ -138,21 +138,21 @@ dynasty-dashboard/
 ### Stage 1 — Local Python Scripts
 Get data flowing from the Sleeper API and print results to the terminal. No web stuff yet.
 
-- [ ] `sleeper.py` — functions that call the API and return data
-- [ ] Pull league info and print team names
-- [ ] Pull weekly matchup scores
-- [ ] Calculate weekly high score
-- [ ] Build survivor tracker logic
-- [ ] Calculate start/sit % per team
-- [ ] Track FAAB usage per team
+- [x] `sleeper.py` — functions that call the API and return data
+- [x] Pull league info and print team names
+- [x] Pull weekly matchup scores
+- [x] Calculate weekly high score
+- [x] Build survivor tracker logic
+- [x] Calculate start/sit % per team
+- [x] Track FAAB usage per team
 
 ### Stage 2 — Flask Web App
 Wrap Stage 1 scripts in Flask so they render in a browser.
 
-- [ ] Set up basic Flask app in `app.py`
-- [ ] Create route for weekly scoreboard
-- [ ] Create route for survivor standings
-- [ ] Create route for start/sit % leaderboard
+- [x] Set up basic Flask app in `app.py`
+- [x] Create route for weekly scoreboard
+- [x] Create route for survivor standings
+- [x] Create route for start/sit % leaderboard
 - [ ] Deploy to Render.com
 
 ### Stage 3 — Polished UI
@@ -283,6 +283,12 @@ CREATE TABLE start_sit (
     percentage REAL,
     PRIMARY KEY (roster_id, week),
     FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
+);
+
+CREATE TABLE page_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    route TEXT,
+    visited_at TEXT
 );
 ```
 

@@ -3,10 +3,13 @@
 # instead of calling requests.get() directly — one place to change if the API changes.
 
 import json
+import logging
 import os
 import time
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 # Before swapping calls over from TEST_LEAGUE_ID to LEAGUE_ID: delete
 # dynasty.db and re-run database.py to rebuild it fresh (see CLAUDE.md's
@@ -22,39 +25,56 @@ PLAYERS_CACHE_FILE = "players_cache.json"
 PLAYERS_CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
+def _get_json(url):
+    """Shared GET + error handling for every Sleeper API call in this file.
+
+    Every function below calls this instead of requests.get() directly, so
+    error handling exists in exactly one place instead of being copy-pasted
+    into every function -- same reason get_team_names_by_roster() is the
+    one place the users/rosters join happens.
+
+    On failure, logs which URL failed and why, then re-raises. This function
+    only handles *logging* the failure -- deciding what to do about it
+    (skip this table's refresh, let the whole script stop, etc.) is left to
+    the caller, since that's a business decision this file shouldn't make.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException:
+        logger.error("Sleeper API call failed: %s", url, exc_info=True)
+        raise
+
+
 def get_league_info(league_id):
     """Return top-level league info, including settings like current week and status."""
     url = f"{BASE_URL}/league/{league_id}"
-    response = requests.get(url)
-    return response.json()
+    return _get_json(url)
 
 
 def get_league_users(league_id):
     """Return the list of team owners (users) in a Sleeper league."""
     url = f"{BASE_URL}/league/{league_id}/users"
-    response = requests.get(url)
-    return response.json()
+    return _get_json(url)
 
 
 def get_league_matchups(league_id, week):
     """Return all matchup entries for a given week (one entry per roster)."""
     url = f"{BASE_URL}/league/{league_id}/matchups/{week}"
-    response = requests.get(url)
-    return response.json()
+    return _get_json(url)
 
 
 def get_league_rosters(league_id):
     """Return all rosters in a league — the roster_id -> owner_id mapping."""
     url = f"{BASE_URL}/league/{league_id}/rosters"
-    response = requests.get(url)
-    return response.json()
+    return _get_json(url)
 
 
 def get_league_transactions(league_id, week):
     """Return all transactions (waivers, free agent adds, trades) for a given week."""
     url = f"{BASE_URL}/league/{league_id}/transactions/{week}"
-    response = requests.get(url)
-    return response.json()
+    return _get_json(url)
 
 
 def get_all_players():
@@ -77,8 +97,7 @@ def get_all_players():
             return json.load(cache_file)
 
     url = f"{BASE_URL}/players/nfl"
-    response = requests.get(url)
-    players = response.json()
+    players = _get_json(url)
 
     with open(PLAYERS_CACHE_FILE, "w") as cache_file:
         json.dump(players, cache_file)

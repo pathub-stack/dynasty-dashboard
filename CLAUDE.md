@@ -97,9 +97,12 @@ At the end of every coding session, update `LEARNING_NOTES.md` with a new entry.
 
 ## Current Build Stage
 
-**Stage 1 — Local Python Scripts**
-Getting data flowing from the Sleeper API and printing to terminal.
-Start with `sleeper.py` — first task is pulling league info and printing team names.
+**Stage 2 — Flask Web App**
+Stages 1 and 1.5 are done (local scripts + SQLite database layer). The
+Flask app (`app.py`) now serves the scoreboard, survivor, and start/sit
+pages from `dynasty.db`, with error logging and traffic monitoring built
+in. Only remaining Stage 2 item is deploying to Render.com. Full status
+in the Database Layer section below.
 
 ---
 
@@ -126,6 +129,11 @@ A SQLite database (`dynasty.db`) stores data pulled from the Sleeper API. All da
   transaction_id is Sleeper's own globally-unique id for the claim, so it
   doubles as the natural key)
 - `start_sit` — roster_id, week, pf, max_pf, percentage
+- `page_visits` — id (autoincrement), route, visited_at. Unlike every
+  table above, this one genuinely wants a surrogate key: it's an
+  append-only event log (one row per request), not something that gets
+  re-derived and replaced on refresh, so there's no natural key to key
+  off of.
 
 ### Key rules for survivor logic
 - Lowest scorer each week is eliminated
@@ -148,13 +156,23 @@ Stage 1.5 — Database layer (database.py):
   per-player shape.)
 - Stage 1.5 is now fully complete.
 Stage 2 — Flask web app (app.py):
-- Basic app + routes for weekly scoreboard, survivor standings, start/sit %
+- Basic app + routes for weekly scoreboard (`/scoreboard`), survivor
+  standings (`/survivor`), start/sit % (`/start-sit`) ✅ 2026-08-23 —
+  plain unstyled HTML/Jinja templates, reads dynasty.db directly, never
+  calls the Sleeper API itself
 - Error logging around sleeper.py's API calls (Python's `logging` module —
-  log failures instead of crashing the page) — confirmed for v1 2026-08-22
+  log failures instead of crashing the page) — confirmed for v1 2026-08-22,
+  built 2026-08-23 ✅. `sleeper.py`'s `_get_json()` is now the one place
+  every API call goes through; on failure it logs the URL and re-raises.
+  Each `database.py` insert function catches that, logs a
+  refresh-was-skipped message, and rolls back rather than committing
+  partial data — verified against both a real successful run and a
+  deliberately-broken league ID.
 - Simple traffic monitoring: a `page_visits` table (route, timestamp)
   written via a Flask `before_request` hook — confirmed for v1 2026-08-22,
-  no third-party analytics needed at this scale
-- Deploy to Render.com
+  built 2026-08-23 ✅, no third-party analytics needed at this scale
+- Deploy to Render.com ← next, but needs the developer's Render.com
+  account/GitHub connection — not something to do unattended
 Stage 3 — Polished UI:
 - Deliberate design direction (not a generic/default pass) — confirmed
   for v1 2026-08-22, avoid the site looking like a typical AI-generated

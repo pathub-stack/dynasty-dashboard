@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Survivor Pot{% endblock %}
+{% block content %}
+<h1>Survivor Pot</h1>
+<table border="1" cellpadding="6">
+    <tr><th>Team</th><th>Status</th></tr>
+    {% for row in standings %}
+    <tr>
+        <td>{{ row["team_name"] }}</td>
+        <td>
+            {% if row["week_eliminated"] is none %}
+                Still Alive
+            {% else %}
+                Eliminated Week {{ row["week_eliminated"] }}
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

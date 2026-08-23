@@ -2,7 +2,11 @@
 # app.py will eventually read FROM this database instead of calling the
 # Sleeper API directly -- database.py is what fills it in the first place.
 
+import logging
+import os
 import sqlite3
+
+import requests
 
 from sleeper import (
     get_league_users,
@@ -15,7 +19,20 @@ from sleeper import (
 )
 from calculations import get_survivor_results, get_start_sit_percentages
 
-DB_NAME = "dynasty.db"
+
+# Locally this is just "dynasty.db" in the project folder. On Render,
+# DB_PATH points at the persistent disk's mount path instead -- the
+# container's own filesystem gets thrown away on every redeploy, so
+# dynasty.db has to live somewhere that survives that. os.environ.get()
+# with a default is the same idea as an optional stored proc parameter:
+# no DB_PATH set (local dev) -> falls back to "dynasty.db".
+DB_NAME = os.environ.get("DB_PATH", "dynasty.db")
+
+# Configured here since database.py is the entry point for every data
+# refresh (run manually today, on a schedule eventually). No filename --
+# the default handler writes to stderr, which Render.com captures as
+# platform logs on its own, no external logging service needed for v1.
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def get_connection():
@@ -77,6 +94,14 @@ def create_tables():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS page_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route TEXT,
+            visited_at TEXT
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS start_sit (
             roster_id INTEGER,
             week INTEGER,
@@ -102,39 +127,53 @@ def insert_teams(league_id):
     week) -- each roster_id just gets overwritten with fresh data instead
     of erroring because the row already exists. Same idea as a SQL
     MERGE/upsert.
+
+    Wrapped in try/except so a Sleeper API hiccup logs an error and skips
+    this refresh instead of crashing whatever called this (a scheduled
+    job today, potentially a Flask route later) with an unhandled
+    exception -- the table just keeps whatever it already had until the
+    next successful refresh.
     """
-    users = get_league_users(league_id)
-    rosters = get_league_rosters(league_id)
+    connection = None
+    try:
+        users = get_league_users(league_id)
+        rosters = get_league_rosters(league_id)
 
-    # Same "chase the id through a lookup table" pattern as sleeper.py's
-    # get_team_names_by_roster(), except we need TWO things off each user
-    # (team name AND owner display name), so we build both dicts here
-    # instead of reusing that function.
-    team_name_by_owner = {}
-    owner_name_by_owner = {}
-    for user in users:
-        owner_name_by_owner[user["user_id"]] = user["display_name"]
-        team_name_by_owner[user["user_id"]] = user["metadata"].get(
-            "team_name", user["display_name"]
-        )
+        # Same "chase the id through a lookup table" pattern as sleeper.py's
+        # get_team_names_by_roster(), except we need TWO things off each user
+        # (team name AND owner display name), so we build both dicts here
+        # instead of reusing that function.
+        team_name_by_owner = {}
+        owner_name_by_owner = {}
+        for user in users:
+            owner_name_by_owner[user["user_id"]] = user["display_name"]
+            team_name_by_owner[user["user_id"]] = user["metadata"].get(
+                "team_name", user["display_name"]
+            )
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    for roster in rosters:
-        roster_id = roster["roster_id"]
-        owner_id = roster["owner_id"]
+        for roster in rosters:
+            roster_id = roster["roster_id"]
+            owner_id = roster["owner_id"]
 
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO teams (roster_id, team_name, owner_name)
-            VALUES (?, ?, ?)
-            """,
-            (roster_id, team_name_by_owner[owner_id], owner_name_by_owner[owner_id]),
-        )
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO teams (roster_id, team_name, owner_name)
+                VALUES (?, ?, ?)
+                """,
+                (roster_id, team_name_by_owner[owner_id], owner_name_by_owner[owner_id]),
+            )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_teams: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 
 def insert_weekly_scores(league_id):
@@ -143,30 +182,42 @@ def insert_weekly_scores(league_id):
     Sleeper's matchups endpoint is per-week (get_league_matchups needs a
     week number), so unlike insert_teams this has to loop and make one API
     call per week instead of one call total.
+
+    Wrapped in try/except like insert_teams -- if any week's fetch fails
+    partway through the loop, rolls back rather than committing a partial
+    season (e.g. weeks 1-9 written, week 10 silently missing).
     """
-    league_info = get_league_info(league_id)
+    connection = None
+    try:
+        league_info = get_league_info(league_id)
 
-    # "leg" is Sleeper's field name for the most recent completed/current
-    # week -- same field calculations.py uses for this.
-    last_played_week = league_info["settings"]["leg"]
+        # "leg" is Sleeper's field name for the most recent completed/current
+        # week -- same field calculations.py uses for this.
+        last_played_week = league_info["settings"]["leg"]
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    for week in range(1, last_played_week + 1):
-        matchups = get_league_matchups(league_id, week)
+        for week in range(1, last_played_week + 1):
+            matchups = get_league_matchups(league_id, week)
 
-        for matchup in matchups:
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO weekly_scores (roster_id, week, points)
-                VALUES (?, ?, ?)
-                """,
-                (matchup["roster_id"], week, matchup["points"]),
-            )
+            for matchup in matchups:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO weekly_scores (roster_id, week, points)
+                    VALUES (?, ?, ?)
+                    """,
+                    (matchup["roster_id"], week, matchup["points"]),
+                )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_weekly_scores: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 
 def insert_survivor_status(league_id):
@@ -179,32 +230,45 @@ def insert_survivor_status(league_id):
 
     week_eliminated is left NULL for teams still alive, matching the
     schema comment in the table itself.
+
+    Wrapped in try/except like insert_teams -- get_survivor_results()
+    calls several sleeper.py functions internally (league info, matchups
+    per week), and any of those failing raises the same
+    requests.exceptions.RequestException caught here.
     """
-    eliminations, survivors = get_survivor_results(league_id)
+    connection = None
+    try:
+        eliminations, survivors = get_survivor_results(league_id)
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    for week, roster_id, _team_name, _points in eliminations:
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO survivor_status (roster_id, week_eliminated)
-            VALUES (?, ?)
-            """,
-            (roster_id, week),
-        )
+        for week, roster_id, _team_name, _points in eliminations:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO survivor_status (roster_id, week_eliminated)
+                VALUES (?, ?)
+                """,
+                (roster_id, week),
+            )
 
-    for roster_id, _team_name in survivors:
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO survivor_status (roster_id, week_eliminated)
-            VALUES (?, NULL)
-            """,
-            (roster_id,),
-        )
+        for roster_id, _team_name in survivors:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO survivor_status (roster_id, week_eliminated)
+                VALUES (?, NULL)
+                """,
+                (roster_id,),
+            )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_survivor_status: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 
 def insert_faab_transactions(league_id):
@@ -222,38 +286,50 @@ def insert_faab_transactions(league_id):
     keyed on Sleeper's own transaction_id instead of something we derive,
     since a plain autoincrement id would've made every re-run duplicate
     the whole season's rows instead of overwriting them.
+
+    Wrapped in try/except like insert_weekly_scores -- rolls back rather
+    than committing a partial season if any week's transactions (or the
+    player name cache) fail to fetch partway through.
     """
-    league_info = get_league_info(league_id)
-    last_played_week = league_info["settings"]["leg"]
+    connection = None
+    try:
+        league_info = get_league_info(league_id)
+        last_played_week = league_info["settings"]["leg"]
 
-    player_names = get_player_names()
+        player_names = get_player_names()
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    for week in range(1, last_played_week + 1):
-        transactions = get_league_transactions(league_id, week)
+        for week in range(1, last_played_week + 1):
+            transactions = get_league_transactions(league_id, week)
 
-        for transaction in transactions:
-            if transaction["type"] != "waiver" or transaction["status"] != "complete":
-                continue
+            for transaction in transactions:
+                if transaction["type"] != "waiver" or transaction["status"] != "complete":
+                    continue
 
-            amount_spent = transaction["settings"]["waiver_bid"]
+                amount_spent = transaction["settings"]["waiver_bid"]
 
-            for player_id, roster_id in transaction["adds"].items():
-                player_name = player_names.get(player_id, "Unknown Player")
+                for player_id, roster_id in transaction["adds"].items():
+                    player_name = player_names.get(player_id, "Unknown Player")
 
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO faab_transactions
-                        (transaction_id, player, roster_id, week, amount_spent)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (transaction["transaction_id"], player_name, roster_id, week, amount_spent),
-                )
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO faab_transactions
+                            (transaction_id, player, roster_id, week, amount_spent)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (transaction["transaction_id"], player_name, roster_id, week, amount_spent),
+                    )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_faab_transactions: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 
 def insert_start_sit(league_id):
@@ -265,26 +341,36 @@ def insert_start_sit(league_id):
     "as of this week." Since start_sit's primary key is (roster_id, week),
     re-running this every week (rather than overwriting the same row)
     naturally builds up a real week-by-week history over the season.
+
+    Wrapped in try/except like insert_teams.
     """
-    league_info = get_league_info(league_id)
-    current_week = league_info["settings"]["leg"]
+    connection = None
+    try:
+        league_info = get_league_info(league_id)
+        current_week = league_info["settings"]["leg"]
 
-    start_sit_results = get_start_sit_percentages(league_id)
+        start_sit_results = get_start_sit_percentages(league_id)
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    for roster_id, _team_name, percentage, pf, max_pf in start_sit_results:
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO start_sit (roster_id, week, pf, max_pf, percentage)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (roster_id, current_week, pf, max_pf, percentage),
-        )
+        for roster_id, _team_name, percentage, pf, max_pf in start_sit_results:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO start_sit (roster_id, week, pf, max_pf, percentage)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (roster_id, current_week, pf, max_pf, percentage),
+            )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_start_sit: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 
 if __name__ == "__main__":
