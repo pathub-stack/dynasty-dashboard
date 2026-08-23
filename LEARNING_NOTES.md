@@ -1093,4 +1093,49 @@ survivor_leader = still_alive[0] if len(still_alive) == 1 else None
 ```
 
 ---
+
+## Session 2026-08-23 (cont'd, wrap-up) -- Render platform Q&A
+
+### What we learned
+
+Not code changes -- infrastructure/platform questions that came up after
+sharing the live link with leaguemates.
+
+**Renaming a Render service does NOT change its `.onrender.com` URL.**
+Tested this directly: changed the service's Name field from
+"dynasty-dashboard" to "thisisnevergoingtowork" in Render's Settings.
+The Name field itself saved correctly, but the live URL stayed
+`dynasty-dashboard-ijio.onrender.com`, and the "expected" new URL
+(`thisisnevergoingtowork.onrender.com`) 404'd. Render's own docs don't
+explicitly document this either way -- they only say the name generates
+the subdomain *at initial setup*. ✅ Good example of confirming a
+platform's actual behavior empirically instead of trusting what a
+Settings field name implies it should do. The real path to a
+name-matching URL is a custom domain, which the developer is setting up
+instead.
+
+**Custom domains on Render are free, not a paid add-on.** Corrected an
+earlier wrong guess in this same conversation -- verified against
+Render's actual docs: the Hobby plan (what this project is already on,
+for the persistent disk) includes 2 custom domains at no extra cost.
+Only the domain registration itself (roughly $10-15/year for a `.com`)
+costs anything.
+
+**Render's Logs and Metrics tabs, and how they relate to our own
+`page_visits` table.** Render automatically captures stdout/stderr
+(which is exactly what `database.py`'s `logging.basicConfig()` and
+Flask's own request logging already feed into, no extra setup needed)
+plus CPU/memory/bandwidth/request-volume metrics, both free on Hobby
+with a 7-day retention window. That's infrastructure-level visibility;
+it's a different thing from `page_visits`, which is our own
+application-level table tracking route visits indefinitely (no 7-day
+limit, since it's just rows in `dynasty.db`) -- the two complement each
+other rather than one replacing the other.
+
+### Questions / still confused about ❓
+
+- None new -- straightforward platform research, verified against
+  Render's own docs rather than assumed.
+
+---
 *Last updated: 2026-08-23*
