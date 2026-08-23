@@ -120,7 +120,11 @@ A SQLite database (`dynasty.db`) stores data pulled from the Sleeper API. All da
 - `teams` — roster_id, team_name, owner_name
 - `weekly_scores` — roster_id, week, points
 - `survivor_status` — roster_id, week_eliminated (NULL = still alive)
-- `faab_transactions` — roster_id, week, player, amount_spent
+- `faab_transactions` — transaction_id, player, roster_id, week, amount_spent
+  (keyed by transaction_id + player, not roster_id — a plain autoincrement id
+  would've made every re-run duplicate the whole season's rows, and
+  transaction_id is Sleeper's own globally-unique id for the claim, so it
+  doubles as the natural key)
 - `start_sit` — roster_id, week, pf, max_pf, percentage
 
 ### Key rules for survivor logic
@@ -132,17 +136,17 @@ A SQLite database (`dynasty.db`) stores data pulled from the Sleeper API. All da
 Stage 1 — Local scripts (sleeper.py, calculations.py) ✅
 Stage 1.5 — Database layer (database.py):
 - `create_tables()`, `insert_teams()`, `insert_weekly_scores()`,
-  `insert_survivor_status()`, `insert_start_sit()` ✅
-- `insert_faab_transactions()` ← next, but blocked on new groundwork first:
-  `get_faab_spending()` in calculations.py only has season-total spend per
-  team (from Sleeper's `waiver_budget_used`), not individual transactions.
-  The `faab_transactions` table wants one row per waiver claim with an
-  actual player name and amount, which needs:
-  1. A new `sleeper.py` function calling `/league/{league_id}/transactions/{week}`
-     (not built yet — the transactions endpoint hasn't been touched)
-  2. Resolving Sleeper's numeric player_ids into real player names via
-     `/players/nfl` — a large, mostly-static file Sleeper says to cache
-     and refetch at most ~once a day, not call casually per-request
+  `insert_survivor_status()`, `insert_start_sit()`, `insert_faab_transactions()` ✅
+  (needed two new pieces of groundwork: `sleeper.py`'s
+  `get_league_transactions()` for the `/transactions/{week}` endpoint, and
+  `get_all_players()`/`get_player_names()` for resolving player_ids to real
+  names, caching Sleeper's ~15 MB `/players/nfl` response to
+  `players_cache.json` and refetching at most once a day — confirmed
+  2026-08-23. Only `type == "waiver"` + `status == "complete"` transactions
+  count as spend; free agent adds are $0, failed waiver claims never had
+  their bid deducted, and FAAB moved via trades doesn't fit this table's
+  per-player shape.)
+- Stage 1.5 is now fully complete.
 Stage 2 — Flask web app (app.py):
 - Basic app + routes for weekly scoreboard, survivor standings, start/sit %
 - Error logging around sleeper.py's API calls (Python's `logging` module —

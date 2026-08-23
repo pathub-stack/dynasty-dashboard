@@ -17,6 +17,10 @@ __pycache__/
 # generated from the Sleeper API, not something to version control
 *.db
 
+# Cached copy of Sleeper's /players/nfl response (~15 MB) - regenerated
+# automatically by sleeper.py's get_all_players(), refetched daily
+players_cache.json
+
 # Secrets, if this project ever adds any (e.g. a Flask secret key)
 .env
 

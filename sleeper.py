@@ -2,6 +2,10 @@
 # Every other script (calculations.py, app.py) will import functions from here
 # instead of calling requests.get() directly — one place to change if the API changes.
 
+import json
+import os
+import time
+
 import requests
 
 # Before swapping calls over from TEST_LEAGUE_ID to LEAGUE_ID: delete
@@ -10,6 +14,12 @@ import requests
 LEAGUE_ID = "1364983086189649920"
 TEST_LEAGUE_ID = "1195237157114392576"
 BASE_URL = "https://api.sleeper.app/v1"
+
+# Sleeper's /players/nfl endpoint returns ~15 MB (every NFL player, not just
+# ours) and their docs ask that it not be called more than ~once a day, so
+# it gets cached to this file instead of being fetched fresh every call.
+PLAYERS_CACHE_FILE = "players_cache.json"
+PLAYERS_CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def get_league_info(league_id):
@@ -38,6 +48,56 @@ def get_league_rosters(league_id):
     url = f"{BASE_URL}/league/{league_id}/rosters"
     response = requests.get(url)
     return response.json()
+
+
+def get_league_transactions(league_id, week):
+    """Return all transactions (waivers, free agent adds, trades) for a given week."""
+    url = f"{BASE_URL}/league/{league_id}/transactions/{week}"
+    response = requests.get(url)
+    return response.json()
+
+
+def get_all_players():
+    """Return Sleeper's full NFL player dictionary (player_id -> player info).
+
+    Every other function in this file hits the API fresh every call -- this
+    one is the exception, because the payload is huge and Sleeper explicitly
+    asks callers not to hammer it. So instead of a plain requests.get(), this
+    checks a local JSON file first (like a cached materialized view) and
+    only refetches from the API when that file is missing or older than
+    PLAYERS_CACHE_MAX_AGE_SECONDS.
+    """
+    cache_is_fresh = (
+        os.path.exists(PLAYERS_CACHE_FILE)
+        and time.time() - os.path.getmtime(PLAYERS_CACHE_FILE) < PLAYERS_CACHE_MAX_AGE_SECONDS
+    )
+
+    if cache_is_fresh:
+        with open(PLAYERS_CACHE_FILE, "r") as cache_file:
+            return json.load(cache_file)
+
+    url = f"{BASE_URL}/players/nfl"
+    response = requests.get(url)
+    players = response.json()
+
+    with open(PLAYERS_CACHE_FILE, "w") as cache_file:
+        json.dump(players, cache_file)
+
+    return players
+
+
+def get_player_names():
+    """Return a dict mapping player_id -> full name.
+
+    Kept separate from get_all_players() because every caller so far only
+    needs the name, not the other ~40 fields (team, position, injury
+    status, etc.) Sleeper returns per player.
+    """
+    players = get_all_players()
+    return {
+        player_id: player_info.get("full_name", "Unknown Player")
+        for player_id, player_info in players.items()
+    }
 
 
 def get_team_names_by_roster(league_id):

@@ -380,4 +380,131 @@ ORDER BY survivor_status.week_eliminated IS NULL, survivor_status.week_eliminate
 ```
 
 ---
-*Last updated: 2026-08-22*
+
+## Session 2026-08-23 — Built insert_faab_transactions() (finishing Stage 1.5)
+
+### What we built
+
+Closed out the one gap left in the database layer:
+
+**`sleeper.py`:**
+- `get_league_transactions(league_id, week)` — hits `/transactions/{week}`,
+  same one-call-per-week shape as `get_league_matchups`
+- `get_all_players()` — hits `/players/nfl` (returns *every* NFL player,
+  ~15 MB), but caches the result to `players_cache.json` and only refetches
+  if that file is missing or older than 24 hours, since Sleeper's docs say
+  not to hit this one casually
+- `get_player_names()` — thin wrapper around `get_all_players()` that
+  trims it down to just `{player_id: full_name}`, since that's all any
+  caller actually needs
+
+**`database.py`:**
+- `insert_faab_transactions()` — loops every played week's transactions,
+  keeps only `type == "waiver"` + `status == "complete"` ones (see below
+  for why), and writes one row per player added
+
+Also had to change `faab_transactions`' schema before writing any of this
+— see Mistakes & fixes, this one's a real design decision, not a bug.
+
+### New concepts learned
+
+**Exploring an API response's actual shape before writing code against it.**
+Instead of guessing what `/transactions/{week}` returns, I ran it against
+the test league first and printed the raw JSON. Turned out there are 3
+transaction `type`s (`waiver`, `free_agent`, `trade`) and 2 `status`es
+(`complete`, `failed`) — none of that was obvious from the endpoint name
+alone. SQL analogy: this is like running `SELECT TOP 5 * FROM table` on a
+linked server table you've never queried before you write real logic
+against it, instead of assuming you know its columns.
+
+**Caching a large, mostly-static API response to a local file.**
+```python
+cache_is_fresh = (
+    os.path.exists(PLAYERS_CACHE_FILE)
+    and time.time() - os.path.getmtime(PLAYERS_CACHE_FILE) < PLAYERS_CACHE_MAX_AGE_SECONDS
+)
+```
+`os.path.getmtime()` reads a file's last-modified timestamp straight off
+the filesystem — no need to store "when did I fetch this" separately,
+the file's own metadata already answers that. This is the first function
+in the project that *isn't* a plain `requests.get()` — every other
+`sleeper.py` function hits the API fresh every time, but Sleeper's own
+docs ask callers not to hammer this specific 15 MB endpoint, so it needed
+an actual caching layer instead of just following the existing pattern.
+
+**Natural key vs. surrogate key, for real this time.** `faab_transactions`
+originally had a plain `id INTEGER PRIMARY KEY AUTOINCREMENT` — fine for
+just defining the table, but useless for making inserts safe to re-run,
+since every other insert function's "safe to re-run" trick
+(`INSERT OR REPLACE` keyed on something real, like `roster_id, week`)
+needs a key that's actually *derived from the data*, not a counter that
+just goes up forever. Sleeper's own `transaction_id` is already a unique
+id for each waiver claim, so pairing it with `player` (in case one
+transaction ever adds more than one player) gives a real composite key —
+swapped it in for the autoincrement id.
+
+```sql
+-- Old: no real key, every re-run would've doubled the whole season
+CREATE TABLE faab_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ...
+);
+
+-- New: keyed by data Sleeper already guarantees is unique
+CREATE TABLE faab_transactions (
+    transaction_id TEXT,
+    player TEXT,
+    ...
+    PRIMARY KEY (transaction_id, player)
+);
+```
+
+**Filtering on more than one column before trusting a total.** Sleeper
+tracks `waiver_bid` on every waiver attempt, win or lose — so filtering
+only on `type == "waiver"` would've counted *failed* claims as spent
+money too. Had to filter on both `type` AND `status` together. Same idea
+as forgetting a second `WHERE` clause and quietly overcounting a total.
+
+### Mistakes & fixes
+
+**Caught a schema flaw before writing any data into it — not a crash,
+a design gap.** `faab_transactions` was created back on 2026-08-22 with
+just an autoincrement `id`, before we knew what Sleeper's transaction data
+even looked like. Once `get_league_transactions()` showed a real
+`transaction_id` was available, it was clear the original schema had no
+way to avoid duplicating rows on re-run. Table was still empty (never
+populated), so fixed it by dropping and recreating it with the composite
+key above instead of working around the bad key later. ✅ Worth remembering:
+"the API hasn't been explored yet" is a good reason to leave a schema
+detail unresolved rather than guess at it.
+
+Verified the fix actually worked by re-running `insert_faab_transactions()`
+twice and checking the row count didn't change (67 both times) — didn't
+just trust that `INSERT OR REPLACE` would behave, actually checked.
+
+### Questions / still confused about ❓
+
+- None new — this session closed out exactly the gap scoped at the end of
+  last session, no surprises.
+
+### Code snippets worth remembering
+
+```python
+# Cache a big/rarely-changing API response to disk instead of refetching
+# every call -- checks the file's own last-modified time, no separate
+# "when did I fetch this" bookkeeping needed
+cache_is_fresh = (
+    os.path.exists(PLAYERS_CACHE_FILE)
+    and time.time() - os.path.getmtime(PLAYERS_CACHE_FILE) < PLAYERS_CACHE_MAX_AGE_SECONDS
+)
+```
+
+```python
+# Filtering on two conditions before trusting a "spent" number --
+# waiver_bid exists on failed claims too, so type alone isn't enough
+if transaction["type"] != "waiver" or transaction["status"] != "complete":
+    continue
+```
+
+---
+*Last updated: 2026-08-23*

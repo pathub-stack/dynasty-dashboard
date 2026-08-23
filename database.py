@@ -9,6 +9,8 @@ from sleeper import (
     get_league_rosters,
     get_league_info,
     get_league_matchups,
+    get_league_transactions,
+    get_player_names,
     TEST_LEAGUE_ID,
 )
 from calculations import get_survivor_results, get_start_sit_percentages
@@ -64,11 +66,12 @@ def create_tables():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faab_transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT,
+            player TEXT,
             roster_id INTEGER,
             week INTEGER,
-            player TEXT,
             amount_spent INTEGER,
+            PRIMARY KEY (transaction_id, player),
             FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
         )
     """)
@@ -204,6 +207,55 @@ def insert_survivor_status(league_id):
     connection.close()
 
 
+def insert_faab_transactions(league_id):
+    """Pull every completed waiver claim across the season and write one row
+    per player added into faab_transactions.
+
+    Only type == "waiver" AND status == "complete" transactions actually
+    represent FAAB spent: free agent pickups cost $0, and a failed waiver
+    claim never had its bid deducted. Trades that move FAAB budget between
+    rosters are a different shape entirely (budget swapped between teams,
+    not spent on a player) and aren't tracked in this table.
+
+    Uses INSERT OR REPLACE keyed on (transaction_id, player) -- same
+    "safe to re-run" pattern as every other insert function here, just
+    keyed on Sleeper's own transaction_id instead of something we derive,
+    since a plain autoincrement id would've made every re-run duplicate
+    the whole season's rows instead of overwriting them.
+    """
+    league_info = get_league_info(league_id)
+    last_played_week = league_info["settings"]["leg"]
+
+    player_names = get_player_names()
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    for week in range(1, last_played_week + 1):
+        transactions = get_league_transactions(league_id, week)
+
+        for transaction in transactions:
+            if transaction["type"] != "waiver" or transaction["status"] != "complete":
+                continue
+
+            amount_spent = transaction["settings"]["waiver_bid"]
+
+            for player_id, roster_id in transaction["adds"].items():
+                player_name = player_names.get(player_id, "Unknown Player")
+
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO faab_transactions
+                        (transaction_id, player, roster_id, week, amount_spent)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (transaction["transaction_id"], player_name, roster_id, week, amount_spent),
+                )
+
+    connection.commit()
+    connection.close()
+
+
 def insert_start_sit(league_id):
     """Snapshot each team's season-to-date PF / Max PF / start-sit % and
     write it into start_sit, tagged with the most recently played week.
@@ -274,6 +326,23 @@ if __name__ == "__main__":
         FROM start_sit
         JOIN teams ON teams.roster_id = start_sit.roster_id
         ORDER BY start_sit.percentage DESC
+    """)
+    for row in cursor.fetchall():
+        print(row)
+    connection.close()
+
+    insert_faab_transactions(TEST_LEAGUE_ID)
+    print("FAAB transactions inserted")
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT teams.team_name, faab_transactions.week, faab_transactions.player,
+               faab_transactions.amount_spent
+        FROM faab_transactions
+        JOIN teams ON teams.roster_id = faab_transactions.roster_id
+        ORDER BY faab_transactions.amount_spent DESC
+        LIMIT 10
     """)
     for row in cursor.fetchall():
         print(row)

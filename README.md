@@ -266,11 +266,12 @@ CREATE TABLE survivor_status (
 );
 
 CREATE TABLE faab_transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id TEXT,
+    player TEXT,
     roster_id INTEGER,
     week INTEGER,
-    player TEXT,
     amount_spent INTEGER,
+    PRIMARY KEY (transaction_id, player),
     FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
 );
 
