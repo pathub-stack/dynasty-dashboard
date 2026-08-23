@@ -100,11 +100,22 @@ At the end of every coding session, update `LEARNING_NOTES.md` with a new entry.
 **Stage 3 — Polished UI**
 Stages 1, 1.5, and 2 are done (local scripts, SQLite database layer,
 Flask app deployed live on Render.com). The design direction is decided
-and built (dark theme, Oswald headings, leaderboard-styled tables) and
-approved as a solid first pass. Only optional item left is charts, not
-requested for v1. Once that's settled the documented v1 roadmap is
-complete except swapping `TEST_LEAGUE_ID` -> `LEAGUE_ID` (Pre-Release
-Checklist below). Full status in the Database Layer section below.
+and built (dark theme, Oswald headings, a real dashboard home page with
+bar-chart cards and a payout summary) and approved. Only optional item
+left is charts, not requested for v1.
+
+Switched from `TEST_LEAGUE_ID` to the real `LEAGUE_ID` on 2026-08-23
+(Pre-Release Checklist below), done locally and confirmed working. The
+real league is still `pre_draft` status, so every stat table is
+genuinely empty (no games played yet) -- fixed three real bugs in
+`calculations.py` this uncovered (`get_survivor_results()` and
+`get_season_high_scores()` both crashed calling `min()`/`max()` on an
+empty week's matchups, and `get_start_sit_percentages()` crashed on a
+missing `fpts_decimal` key pre-season) plus a related bug in `app.py`'s
+`survivor_leader` logic, which was picking an arbitrary "leader" out of
+several still-alive teams instead of only declaring one once exactly one
+team remains. Render's copy still needs the same switch -- see the
+Pre-Release Checklist.
 
 ---
 

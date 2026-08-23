@@ -15,7 +15,7 @@ from sleeper import (
     get_league_matchups,
     get_league_transactions,
     get_player_names,
-    TEST_LEAGUE_ID,
+    LEAGUE_ID,
 )
 from calculations import get_survivor_results, get_start_sit_percentages
 
@@ -377,7 +377,7 @@ if __name__ == "__main__":
     create_tables()
     print(f"Tables created in {DB_NAME}")
 
-    insert_teams(TEST_LEAGUE_ID)
+    insert_teams(LEAGUE_ID)
     print("Teams inserted")
 
     # Quick sanity check -- read back what actually landed in the table.
@@ -388,7 +388,7 @@ if __name__ == "__main__":
         print(row)
     connection.close()
 
-    insert_weekly_scores(TEST_LEAGUE_ID)
+    insert_weekly_scores(LEAGUE_ID)
     print("Weekly scores inserted")
 
     # Sanity check -- just week 1, so the output stays readable.
@@ -401,7 +401,7 @@ if __name__ == "__main__":
         print(row)
     connection.close()
 
-    insert_start_sit(TEST_LEAGUE_ID)
+    insert_start_sit(LEAGUE_ID)
     print("Start/sit % inserted")
 
     connection = get_connection()
@@ -417,7 +417,7 @@ if __name__ == "__main__":
         print(row)
     connection.close()
 
-    insert_faab_transactions(TEST_LEAGUE_ID)
+    insert_faab_transactions(LEAGUE_ID)
     print("FAAB transactions inserted")
 
     connection = get_connection()
@@ -434,7 +434,7 @@ if __name__ == "__main__":
         print(row)
     connection.close()
 
-    insert_survivor_status(TEST_LEAGUE_ID)
+    insert_survivor_status(LEAGUE_ID)
     print("Survivor status inserted")
 
     # Sanity check -- JOIN back to teams so this prints team names instead

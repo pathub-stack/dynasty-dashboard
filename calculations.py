@@ -54,6 +54,12 @@ def get_survivor_results(league_id):
             if matchup["roster_id"] in alive
         ]
 
+        if not alive_scores:
+            # No matchup data for this week yet (the season hasn't reached
+            # it, or "leg" points at a week still in progress). Nothing to
+            # eliminate, so stop here instead of crashing on an empty min().
+            break
+
         lowest_points = min(points for roster_id, points in alive_scores)
 
         # Everyone who matched that lowest score, not just the first one found.
@@ -94,12 +100,17 @@ def get_start_sit_percentages(league_id):
 
         # Sleeper splits points into whole-number + decimal (hundredths)
         # fields to avoid floating-point rounding issues in their database.
-        pf = settings["fpts"] + settings["fpts_decimal"] / 100
-        max_pf = settings["ppts"] + settings["ppts_decimal"] / 100
+        # Before the season starts, these keys may not exist on the roster
+        # at all yet (not just be zero), so .get() with a 0 fallback covers
+        # both cases the same way.
+        pf = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
+        max_pf = settings.get("ppts", 0) + settings.get("ppts_decimal", 0) / 100
 
         roster_id = roster["roster_id"]
         team_name = team_names_by_roster[roster_id]
-        start_sit_pct = pf / max_pf
+        # No games played yet means max_pf is 0. There's no meaningful
+        # percentage yet, so use 0% instead of dividing by zero.
+        start_sit_pct = pf / max_pf if max_pf else 0
         results.append((roster_id, team_name, start_sit_pct, pf, max_pf))
 
     results.sort(key=lambda result: result[2], reverse=True)
@@ -128,6 +139,11 @@ def get_season_high_scores(league_id):
     weekly_highs = []
     for week in range(1, last_played_week + 1):
         matchups = get_league_matchups(league_id, week)
+
+        if not matchups:
+            # Same reasoning as get_survivor_results(): no data for this
+            # week yet, so stop instead of crashing on an empty max().
+            break
 
         top_points = max(matchup["points"] for matchup in matchups)
 

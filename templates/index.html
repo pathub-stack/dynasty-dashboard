@@ -1,21 +1,208 @@
 {% extends "base.html" %}
 {% block title %}Dynasty Dashboard{% endblock %}
 {% block content %}
-<h1>This Is Never Going To Work</h1>
-<p class="hub-intro">Live stats for the league -- weekly scores, the survivor pot, and the start/sit % race for pick 1.13.</p>
 
-<div class="hub-grid">
-    <a class="hub-card" href="{{ url_for('scoreboard') }}">
-        <span class="hub-card-title">Scoreboard</span>
-        <span class="hub-card-desc">This week's scores, ranked 1-12</span>
-    </a>
-    <a class="hub-card" href="{{ url_for('survivor') }}">
-        <span class="hub-card-title">Survivor Pot</span>
-        <span class="hub-card-desc">Who's still alive, who's been eliminated</span>
-    </a>
-    <a class="hub-card" href="{{ url_for('start_sit') }}">
-        <span class="hub-card-title">Start/Sit %</span>
-        <span class="hub-card-desc">PF &divide; Max PF leaderboard</span>
-    </a>
+<div class="masthead__eyebrow">12-Team Dynasty League &middot; Sleeper</div>
+<h1>This Is Never Going To Work</h1>
+
+<div class="section-eyebrow">$1,800 Pot &middot; 5 Categories</div>
+<h2 class="section-title">Where The Money Stands</h2>
+<p class="section-hint">Who'd get paid in each category if the season ended today.</p>
+
+<div class="payouts">
+
+    <div class="payout-tile payout-tile--wide">
+        <span class="payout-tile__category">Weekly High Score</span>
+        <span class="payout-tile__pot">$425 total &middot; $25/week &times; 17 weeks</span>
+        {% for row in weekly_high_tally %}
+        <div class="payout-mini-row">
+            <span class="payout-mini-row__team">{{ row["team_name"] }}</span>
+            <span class="payout-mini-row__amount">{{ row["wins"] }}&times; &middot; ${{ row["wins"] * 25 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="payout-tile">
+        <span class="payout-tile__category">Survivor Pot</span>
+        <span class="payout-tile__pot">$85 total</span>
+        {% if survivor_leader %}
+        <div class="payout-tile__leader">{{ survivor_leader["team_name"] }}</div>
+        <div class="payout-tile__amount">$85</div>
+        <div class="payout-tile__note">{{ eliminated_count }} eliminated ahead of them</div>
+        {% else %}
+        <div class="payout-tile__leader">TBD</div>
+        {% endif %}
+    </div>
+
+    <div class="payout-tile">
+        <span class="payout-tile__category">Season High</span>
+        <span class="payout-tile__pot">$60 total</span>
+        {% if season_high_leader %}
+        <div class="payout-tile__leader">{{ season_high_leader["team_name"] }}{% if season_high_tied %} (tied){% endif %}</div>
+        <div class="payout-tile__amount">$60</div>
+        <div class="payout-tile__note">{{ season_high_leader["points"] }} in Week {{ season_high_leader["week"] }}</div>
+        {% else %}
+        <div class="payout-tile__leader">TBD</div>
+        {% endif %}
+    </div>
+
+    <div class="payout-tile-stack">
+        <div class="payout-tile payout-tile--pending">
+            <span class="payout-tile__category">1st Place</span>
+            <span class="payout-tile__pot">$870 total</span>
+            <div class="payout-tile__leader">Coming Soon</div>
+            <div class="payout-tile__note">Needs a standings feature</div>
+        </div>
+
+        <div class="payout-tile payout-tile--pending">
+            <span class="payout-tile__category">2nd Place</span>
+            <span class="payout-tile__pot">$300 total</span>
+            <div class="payout-tile__leader">Coming Soon</div>
+            <div class="payout-tile__note">Needs a standings feature</div>
+        </div>
+    </div>
+
+</div>
+
+<div class="section-title-row">
+    <h2 class="section-title">Standings</h2>
+    <span class="badge-soon">Coming Soon</span>
+</div>
+<p class="section-hint">Win-loss records and points aren't tracked yet. Teams shown for reference.</p>
+
+<div class="table-scroll" style="margin-bottom: 2.5rem;">
+    <table class="leaderboard">
+        <tr><th>Team</th><th>Record</th><th>PF</th></tr>
+        {% for team_name in standings_teams %}
+        <tr><td>{{ team_name }}</td><td>TBD</td><td>TBD</td></tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div class="dash-grid">
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Week {{ week }} &middot; Scoreboard</span>
+                <h3 class="dash-card__title">
+                    <svg class="dash-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="14"/></svg>
+                    Weekly Scores
+                </h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in scoreboard_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank">{{ loop.index }}</span>
+                <div>
+                    <div class="bar-row__label">{{ row["team_name"] }}</div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%; background-color: {{ team_colors[row['team_name']] }}"></div></div>
+                </div>
+                <span class="bar-row__value">{{ row["points"] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Season-long &middot; Survivor Pot</span>
+                <h3 class="dash-card__title">
+                    <svg class="dash-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"/></svg>
+                    Survivor
+                    {% if survivor_leader %}<span class="dash-card__title-highlight">: {{ survivor_leader["team_name"] }}</span>{% endif %}
+                </h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in survivor_rows %}
+            <div class="list-row">
+                <span class="list-row__week">{% if row["week_eliminated"] %}Wk {{ row["week_eliminated"] }}{% endif %}</span>
+                <span class="list-row__team">{{ row["team_name"] }}</span>
+                <span class="list-row__pts">{% if row["week_eliminated"] is not none %}{{ row["points"] }}{% endif %}</span>
+                {% if row["week_eliminated"] is none %}
+                <span class="status-pill status-alive">Survivor</span>
+                {% else %}
+                <span class="status-pill status-eliminated">Out</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Season-long &middot; Season High Score</span>
+                <h3 class="dash-card__title">
+                    <svg class="dash-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 9.5 16.5 14 18.5 21 12 17 5.5 21 7.5 14 2 9.5 9 9"/></svg>
+                    Best Single Week
+                </h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in season_high_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank">{{ loop.index }}</span>
+                <div>
+                    <div class="bar-row__label">{{ row["team_name"] }} <small>Wk {{ row["week"] }}</small></div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%; background-color: {{ team_colors[row['team_name']] }}"></div></div>
+                </div>
+                <span class="bar-row__value">{{ row["points"] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Season-long &middot; Start/Sit %</span>
+                <h3 class="dash-card__title">
+                    <svg class="dash-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    Roster Management
+                </h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in start_sit_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank">{{ loop.index }}</span>
+                <div>
+                    <div class="bar-row__label">{{ row["team_name"] }}</div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%; background-color: {{ team_colors[row['team_name']] }}"></div></div>
+                </div>
+                <span class="bar-row__value">{{ "%.2f"|format(row["width_pct"]) }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Season-long &middot; FAAB</span>
+                <h3 class="dash-card__title">
+                    <svg class="dash-card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 3-1.5c1.5 0 3 .75 3 2s-1.5 2-3 2-3 .5-3 2 1.5 2 3 2a3 3 0 0 0 3-1.5"/><line x1="12" y1="6" x2="12" y2="7.5"/><line x1="12" y1="16.5" x2="12" y2="18"/></svg>
+                    Waiver Budget
+                </h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in faab_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank">{{ loop.index }}</span>
+                <div>
+                    <div class="bar-row__label">{{ row["team_name"] }}</div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%; background-color: {{ team_colors[row['team_name']] }}"></div></div>
+                </div>
+                <span class="bar-row__value">${{ row["remaining"] }} <small>left / ${{ row["spent"] }} spent</small></span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
 </div>
 {% endblock %}

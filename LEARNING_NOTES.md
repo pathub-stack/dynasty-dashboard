@@ -1001,4 +1001,96 @@ probably isn't where you're looking.
   needing to bisect further).
 
 ---
+
+## Session 2026-08-23 (cont'd, final) -- Design refinement and the real league switch
+
+### What we built
+
+Iterated on the dashboard home page based on live feedback (survivor
+table alignment, FAAB bar direction, per-team colors, icons, pill nav,
+a placeholder Standings section, two "Coming Soon" nav items), then did
+the actual `TEST_LEAGUE_ID` -> `LEAGUE_ID` switch: updated
+`database.py`'s `__main__` block, deleted the local `dynasty.db`, and
+rebuilt it fresh against the real league.
+
+### New concepts learned
+
+**A bug that only shows up once real (not sample) data hits the code.**
+Every calculation function worked fine all season against
+`TEST_LEAGUE_ID`'s fully-completed 17-week season, because there was
+always at least one score to call `min()`/`max()` on. The moment they
+ran against a `pre_draft` league with zero games played,
+`get_survivor_results()` and `get_season_high_scores()` both crashed
+calling `min()`/`max()` on an empty list, and `get_start_sit_percentages()`
+crashed on a roster settings dict that didn't even have the
+`fpts_decimal` key yet (not just zero -- genuinely absent). ✅ Good
+reminder: code that's only ever been tested against "the happy path"
+data can hide bugs that only a genuinely different real-world case
+(brand new league, empty season) will expose. Caught this by explicitly
+checking the real league's actual state via the API before touching any
+database, not by assuming last session's test-league behavior would
+carry over.
+
+**`dict.get(key, default)` for a key that might not exist at all.**
+```python
+pf = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
+```
+Different from the earlier `dict.get()` pattern (falling back when a
+value is present but empty) -- here the key itself might not exist in
+the dict yet pre-season, so `settings["fpts_decimal"]` would raise a
+`KeyError`, not just return something falsy. `.get()` handles "missing
+entirely" and "present but zero" the exact same way.
+
+**An empty result isn't always an error -- sometimes it's the correct
+answer.** Adding `if not alive_scores: break` to
+`get_survivor_results()` isn't "handling an error," it's recognizing
+that an empty week genuinely means "nothing happened yet," and the
+correct response is "no eliminations this week," not a crash.
+
+**A logic bug distinct from a crash bug.** `survivor_leader` never
+raised an exception with 12 teams still alive -- it just silently
+picked whichever team's row happened to come back first from the query
+and displayed them as if they'd already won the pot. Fixed by only
+declaring a leader when exactly one team is left standing
+(`len(still_alive) == 1`), not just "found a row with no elimination."
+Nothing crashed, so nothing would have flagged this without actually
+looking at what the home page displayed once real data was there.
+
+### Mistakes & fixes
+
+**Grid column math didn't actually add up.** The payout tiles grid was
+declared as `repeat(5, 1fr)` at wide screens, but the tiles inside it
+needed 6 columns worth of space (the wide Weekly High tile spanning 2,
+plus 4 more singles) -- so the 6th tile (2nd Place) had nowhere left in
+that row and wrapped to a lonely row by itself. Fixed by stacking 1st
+and 2nd Place into one shared column instead of trying to force a 6th
+track into a 5-column grid.
+
+**Used my own "avoid em dashes" reminder's connector as an em dash,
+while writing it.** Caught immediately on review, but a good example of
+how automatic a habit can be -- worth reading back over anything meant
+to correct a habit, since the habit can sneak into the correction itself.
+
+### Questions / still confused about ❓
+
+- None new this session.
+
+### Code snippets worth remembering
+
+```python
+# .get() with a default handles "key is missing entirely" the same way
+# as "key exists but is zero" -- useful before a season/data source has
+# fully populated yet
+pf = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
+```
+
+```python
+# A "leader" only exists once exactly one option remains -- checking
+# "is there a row with no elimination" isn't the same question as
+# "has exactly one team survived"
+still_alive = [row for row in survivor_rows if row["week_eliminated"] is None]
+survivor_leader = still_alive[0] if len(still_alive) == 1 else None
+```
+
+---
 *Last updated: 2026-08-23*
