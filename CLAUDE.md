@@ -97,12 +97,14 @@ At the end of every coding session, update `LEARNING_NOTES.md` with a new entry.
 
 ## Current Build Stage
 
-**Stage 2 — Flask Web App**
-Stages 1 and 1.5 are done (local scripts + SQLite database layer). The
-Flask app (`app.py`) now serves the scoreboard, survivor, and start/sit
-pages from `dynasty.db`, with error logging and traffic monitoring built
-in. Only remaining Stage 2 item is deploying to Render.com. Full status
-in the Database Layer section below.
+**Stage 3 — Polished UI**
+Stages 1, 1.5, and 2 are done (local scripts, SQLite database layer,
+Flask app deployed live on Render.com). The design direction is decided
+and built (dark theme, Oswald headings, leaderboard-styled tables) and
+approved as a solid first pass. Only optional item left is charts, not
+requested for v1. Once that's settled the documented v1 roadmap is
+complete except swapping `TEST_LEAGUE_ID` -> `LEAGUE_ID` (Pre-Release
+Checklist below). Full status in the Database Layer section below.
 
 ---
 
@@ -184,11 +186,15 @@ Stage 2 — Flask web app (app.py):
   each redeploy.
 - Stage 2 is now fully complete.
 Stage 3 — Polished UI:
-- Deliberate design direction (not a generic/default pass) — confirmed
-  for v1 2026-08-22, avoid the site looking like a typical AI-generated
-  page. Needs a concrete reference point (e.g. Sleeper's own app? ESPN
-  Fantasy?) before starting — ask the developer if not yet decided.
-- Tables and leaderboards, charts if wanted
+- Deliberate design direction ✅ decided and built 2026-08-23. Dark
+  theme, single green accent (gold/silver/bronze for top-3 ranks, red
+  for "eliminated"), Oswald for headings/nav, system-ui for body text.
+  Home page is now a real hub with card links instead of a paragraph.
+  Reviewed live, approved as a "solid first pass." Full reasoning and
+  reference points in Obsidian's `Dynasty Dashboard Feature.md`. Lives
+  in `static/style.css` + `templates/*.html`.
+- Tables and leaderboards ✅ (leaderboard-styled tables, status pills on
+  survivor). Charts still optional, not built — not requested for v1.
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change
 indicator) considered and intentionally deferred to "someday," not v1 —

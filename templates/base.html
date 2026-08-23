@@ -2,19 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Dynasty Dashboard{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <!-- Every page extends this one -- Stage 3 is where this gets actual
-         design; for now it's just plain HTML so the routes/data are the
-         focus, not styling. -->
-    <nav>
-        <a href="{{ url_for('home') }}">Home</a> |
-        <a href="{{ url_for('scoreboard') }}">Weekly Scoreboard</a> |
-        <a href="{{ url_for('survivor') }}">Survivor Pot</a> |
-        <a href="{{ url_for('start_sit') }}">Start/Sit %</a>
-    </nav>
-    <hr>
-    {% block content %}{% endblock %}
+    <header class="site-header">
+        <nav class="site-nav">
+            <a class="site-brand" href="{{ url_for('home') }}">This Is Never Going To Work</a>
+            <div class="site-nav-links">
+                <a href="{{ url_for('scoreboard') }}">Scoreboard</a>
+                <a href="{{ url_for('survivor') }}">Survivor Pot</a>
+                <a href="{{ url_for('start_sit') }}">Start/Sit %</a>
+            </div>
+        </nav>
+    </header>
+    <main class="page">
+        {% block content %}{% endblock %}
+    </main>
 </body>
 </html>

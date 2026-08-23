@@ -811,4 +811,117 @@ DB_NAME = os.environ.get("DB_PATH", "dynasty.db")
 ```
 
 ---
+
+## Session 2026-08-23 (cont'd yet again) — Stage 3 design pass
+
+### What we built
+
+**`static/style.css`** — the first real CSS in the project, built around
+CSS custom properties (variables) for the whole palette/typography
+instead of repeating raw values everywhere:
+```css
+:root {
+    --color-bg: #0d1117;
+    --color-accent: #3fb950;
+    --font-heading: "Oswald", "Arial Narrow", sans-serif;
+}
+```
+Grounded in the design direction already logged in Obsidian back on
+2026-08-22 (simple/modern/clean, Sleeper's app + 440andfriends.com as
+references) but the actual colors/fonts/spacing were picked this
+session, since that gap had been explicitly left open. Reviewed live and
+approved as a "solid first pass."
+
+**Templates** — `base.html` got a real nav bar (brand name + section
+links) and now links the stylesheet plus a Google Fonts import for
+Oswald. `index.html` became a real hub page with card links instead of
+a paragraph of text. `scoreboard.html`/`start_sit.html` got rank-based
+styling (gold/silver/bronze for top 3). `survivor.html` got colored
+status pills instead of plain text, plus a payout blurb matching the one
+already on start/sit % (small follow-up after first review).
+
+### New concepts learned
+
+**CSS custom properties (variables) = named constants for design
+values.** `--color-accent: #3fb950;` defined once in `:root`, then used
+everywhere as `var(--color-accent)`. Same reason you'd never hardcode a
+magic number in five different queries — change the value in one place,
+every use of it updates. This is what makes a "theme" a real thing
+instead of a color repeated by hand in a dozen places.
+
+**Conditional CSS classes from Jinja, built as a string.**
+```jinja
+<td class="rank{% if loop.index <= 3 %} rank-{{ loop.index }}{% endif %}">
+```
+This builds the `class` attribute's value piece by piece -- always
+`"rank"`, then conditionally appends `" rank-1"` / `" rank-2"` /
+`" rank-3"` only for the top 3 rows. Same idea as string concatenation
+in Python, just inline in the template instead of in a `.py` file.
+
+**`box-sizing: border-box` as a near-universal reset.** `* { box-sizing: border-box; }`
+makes padding and border count *inside* an element's declared width
+instead of adding to it -- without this, a table cell with padding ends
+up wider than expected and things misalign in ways that are annoying to
+debug. Basically every real stylesheet starts with this.
+
+**CSS Grid with `auto-fit` + `minmax()` for a responsive card layout,
+with zero media queries.**
+```css
+grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+```
+Reads as "fit as many 220px-or-wider columns as will comfortably fit,
+and stretch them evenly to fill the row" -- the home page's 3 cards sit
+side-by-side on a wide screen and stack automatically on a narrow one,
+without writing a single `@media` rule for it.
+
+**Verifying a UI change without a browser, honestly.** This environment
+doesn't have a headless browser set up, so instead of claiming the
+design was "done," checked what *could* be verified without eyes on
+it -- routes return 200, the right CSS classes actually show up in the
+rendered HTML, no template errors -- and was upfront that the actual
+visual judgment call still needed a real person looking at a real
+browser. ✅ Good instinct to remember: "I tested the plumbing" and "I
+tested how it looks" are two different claims, don't blur them together.
+
+### Mistakes & fixes
+
+**Killed the dev server mid-review by reflex.** After verifying the
+markup via `curl`, shut the Flask dev server down the same way as every
+previous test -- except this time the developer was about to actually
+look at it in a browser, and the "site can't be reached" was just the
+server being off, not a real bug. ✅ Lesson: a UI change being reviewed
+by an actual person needs the server left running, not cleaned up the
+instant automated checks pass.
+
+### Questions / still confused about ❓
+
+- None new -- this was a fairly mechanical CSS + template session, no
+  surprises.
+
+### Code snippets worth remembering
+
+```css
+/* Design tokens as CSS custom properties -- change the palette in one
+   place instead of hunting down every hardcoded color */
+:root {
+    --color-bg: #0d1117;
+    --color-accent: #3fb950;
+    --font-heading: "Oswald", "Arial Narrow", sans-serif;
+}
+body {
+    background: var(--color-bg);
+    font-family: var(--font-heading);
+}
+```
+
+```css
+/* Responsive card grid with no media queries */
+.hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+```
+
+---
 *Last updated: 2026-08-23*

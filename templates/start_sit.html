@@ -2,12 +2,13 @@
 {% block title %}Start/Sit % Leaderboard{% endblock %}
 {% block content %}
 <h1>Start/Sit % Leaderboard</h1>
-<p>Highest % earns pick 1.13 in the rookie draft.</p>
-<table border="1" cellpadding="6">
+<p class="hub-intro">Highest % earns pick 1.13 in the rookie draft.</p>
+<div class="table-scroll">
+<table class="leaderboard">
     <tr><th>Rank</th><th>Team</th><th>PF</th><th>Max PF</th><th>%</th></tr>
     {% for row in leaderboard %}
     <tr>
-        <td>{{ loop.index }}</td>
+        <td class="rank{% if loop.index <= 3 %} rank-{{ loop.index }}{% endif %}">{{ loop.index }}</td>
         <td>{{ row["team_name"] }}</td>
         <td>{{ row["pf"] }}</td>
         <td>{{ row["max_pf"] }}</td>
@@ -15,4 +16,5 @@
     </tr>
     {% endfor %}
 </table>
+</div>
 {% endblock %}

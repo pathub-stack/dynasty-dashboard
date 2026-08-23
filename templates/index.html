@@ -2,5 +2,20 @@
 {% block title %}Dynasty Dashboard{% endblock %}
 {% block content %}
 <h1>This Is Never Going To Work</h1>
-<p>Pick a page above to see this week's stats.</p>
+<p class="hub-intro">Live stats for the league -- weekly scores, the survivor pot, and the start/sit % race for pick 1.13.</p>
+
+<div class="hub-grid">
+    <a class="hub-card" href="{{ url_for('scoreboard') }}">
+        <span class="hub-card-title">Scoreboard</span>
+        <span class="hub-card-desc">This week's scores, ranked 1-12</span>
+    </a>
+    <a class="hub-card" href="{{ url_for('survivor') }}">
+        <span class="hub-card-title">Survivor Pot</span>
+        <span class="hub-card-desc">Who's still alive, who's been eliminated</span>
+    </a>
+    <a class="hub-card" href="{{ url_for('start_sit') }}">
+        <span class="hub-card-title">Start/Sit %</span>
+        <span class="hub-card-desc">PF &divide; Max PF leaderboard</span>
+    </a>
+</div>
 {% endblock %}
