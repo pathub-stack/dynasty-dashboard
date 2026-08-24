@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<h1>Admin</h1>
+<p class="section-hint">This page isn't for the league &mdash; developer traffic stats only.</p>
+{% if error %}
+<p class="section-hint" style="color: var(--color-danger);">{{ error }}</p>
+{% endif %}
+<form class="admin-login-form" method="post">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autofocus>
+    <button type="submit" class="btn">Log In</button>
+</form>
+{% endblock %}

@@ -1240,4 +1240,109 @@ week 17), but wasteful, and worth fixing separately from this scheduling
 work. Logged in the Obsidian roadmap doc.
 
 ---
+
+## Session 2026-08-24 (cont'd) — Built the /admin traffic page
+
+### What we built
+
+Picked the next roadmap item: a password-gated `/admin` page showing
+`page_visits` data (visits per route, last-30-days trend), instead of
+querying it by hand in Render's Shell. First route in the whole app that
+needs to check anything before rendering -- everything else is
+intentionally public, same as the Sleeper API it mirrors.
+
+- `ADMIN_PASSWORD` env var (no local fallback -- more on why below) plus
+  `app.secret_key` (falls back to a dev-only value locally, must be set
+  for real on Render) so Flask's `session` can sign a cookie proving
+  someone already logged in.
+- `/admin` (GET shows the login form or the dashboard depending on
+  `session["is_admin"]`; POST checks the submitted password) and
+  `/admin/logout` (clears the session flag).
+- Two new queries: total visits per route (`GROUP BY route`), and total
+  visits per day for the last 30 days (`GROUP BY date(visited_at)`).
+- Two new templates (`admin_login.html`, `admin_dashboard.html`) that
+  reuse the existing `.dash-card` / `.bar-row` CSS classes from the home
+  page -- no new chart/bar CSS needed, just a small `.admin-login-form` /
+  `.btn` addition for the one thing the site didn't have yet: a form.
+
+### New concepts learned
+
+**"Fail closed," not "fail open."** `DB_NAME` has a friendly local
+fallback (`os.environ.get("DB_PATH", "dynasty.db")`) because a missing
+value there just means "use the default database" -- harmless. Did the
+*opposite* for `ADMIN_PASSWORD`
+(`os.environ.get("ADMIN_PASSWORD")`, no second argument): if it's not
+set, `ADMIN_PASSWORD` is `None`, and `None` can never equal a submitted
+password string, so login is simply impossible until someone deliberately
+sets it. ✅ The two situations look identical in code (an env var lookup
+with `os.environ.get`), but which way you let it fail is a real security
+decision, not a style choice.
+
+**Sessions vs. just remembering something server-side.** `session` in
+Flask isn't a database table Claude Code manages -- it's a cookie in the
+*user's own browser*, cryptographically signed with `app.secret_key` so
+they can't forge it (e.g. hand-editing the cookie to say
+`is_admin: true`). Closest SQL analogy: like a signed auth token a client
+presents on every request, except Flask handles the signing/verifying for
+us. ❓ Still fuzzy on exactly what "signed" is doing mechanically (some
+kind of hash so tampering is detectable?) -- worth digging into next time
+sessions come up.
+
+**The Post/Redirect/Get pattern.** First instinct was to have a
+successful login just render the dashboard directly in the same POST
+response. Problem: hitting refresh afterward would resubmit the login
+form (the browser's "confirm form resubmission" warning) because the
+browser remembers the last request was a POST. Fixed by having a
+successful POST `redirect()` to a plain `GET /admin` instead of rendering
+inline -- now the *last* request in the browser's history is a harmless
+GET, so refreshing just reloads the dashboard. ✅ This clicked once I saw
+it's the same reason online forms often land you on a different
+confirmation-page URL after submitting, not the form page again.
+
+### Mistakes & fixes
+
+Building this surfaced a real, unrelated data-quality bug in the
+*existing* traffic-logging code (Stage 2, `before_request` hook): it was
+recording a row for **every** request, including `/static/style.css`
+fetches -- so "Visits by Page" showed the CSS file as if it were a page
+someone visited, growing every single page load. Fixed by skipping
+`/static/` paths in `log_page_visit()` before the insert. Confirmed with
+a before/after row count instead of just eyeballing the page -- caught
+this myself in testing because the admin page's own output looked wrong,
+not because it errored.
+
+### Questions / still confused about ❓
+
+- How Flask's session-cookie signing actually works under the hood (noted
+  above too) -- know *that* it prevents tampering, not exactly *how*.
+
+**Q: Can I just make up my own string for `FLASK_SECRET_KEY`?**
+A: Technically yes, but `ADMIN_PASSWORD` and `FLASK_SECRET_KEY` want
+different things even though both are "just a string in an env var."
+`ADMIN_PASSWORD` gets typed in by a human (me) every login, so it needs
+to be memorable. `FLASK_SECRET_KEY` is never typed by anyone -- it only
+exists so Flask can cryptographically sign the login cookie -- so it
+should be long and random instead, generated rather than made up:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+✅ Good rule of thumb going forward: if a value gets typed by a human,
+optimize for memorable; if a value only gets read by code, optimize for
+random/unguessable. Side effect worth remembering: changing this value
+later logs everyone out of `/admin` (their old cookie's signature stops
+matching) -- not a bug if that ever happens.
+
+### Code snippets worth remembering
+
+```python
+# Fail-closed pattern: no fallback value means "nobody gets in" until
+# it's deliberately configured, instead of silently allowing something.
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+if ADMIN_PASSWORD and submitted_password == ADMIN_PASSWORD:
+    session["is_admin"] = True
+    return redirect(url_for("admin"))  # Post/Redirect/Get, not render() here
+```
+
+---
 *Last updated: 2026-08-24*

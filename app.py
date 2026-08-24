@@ -10,12 +10,24 @@ import sqlite3
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, render_template, request
+from flask import Flask, redirect, render_template, request, session, url_for
 
 from database import DB_NAME, create_tables, refresh_all_data
 from sleeper import LEAGUE_ID
 
 app = Flask(__name__)
+
+# Needed for Flask's `session` to work at all -- it's the key used to sign
+# the session cookie, so a browser can't just edit its own cookie to claim
+# is_admin=True. The fallback only covers local dev (nobody else can reach
+# localhost); Render's copy needs FLASK_SECRET_KEY set for real, same as
+# DB_PATH and ADMIN_PASSWORD below.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-not-for-production")
+
+# No default here on purpose -- unlike DB_NAME, a missing ADMIN_PASSWORD
+# should mean "nobody can log in" (fail closed), not "fall back to some
+# guessable value baked into a public GitHub repo."
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
 # From README's documented league settings, not a live API call -- Flask
 # never touches Sleeper's API, only dynasty.db, so this can't be pulled
@@ -101,7 +113,15 @@ def log_page_visit():
     tables get REPLACED on every refresh (same roster_id, fresher data),
     but a page visit is a one-time event -- there's nothing to overwrite,
     every request is a genuinely new row.
+
+    Skips /static/ requests (CSS, images, etc.) -- those fire on every
+    single page load alongside the real page request, so counting them
+    here would drown out actual page views with "someone's browser
+    fetched style.css again."
     """
+    if request.path.startswith("/static/"):
+        return
+
     connection = get_db_connection()
     connection.execute(
         "INSERT INTO page_visits (route, visited_at) VALUES (?, ?)",
@@ -384,6 +404,93 @@ def draft_picks():
         title="2027 Draft Picks",
         message="Draft pick tracking isn't built yet. Logged as a future idea in the project roadmap.",
     )
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    """Password-gated page showing page_visits traffic data.
+
+    Everything else in this app is intentionally public (same as the
+    Sleeper API it mirrors) -- this is the one page meant for just the
+    developer, not the other 11 leaguemates, so it's the first route that
+    needs to check anything before rendering.
+
+    Not logged in yet -> show the login form (and re-show it with an error
+    if a submitted password was wrong). Logged in -> skip straight to the
+    dashboard queries below. `session["is_admin"]` is what "logged in"
+    means here -- Flask signs that cookie with app.secret_key above, so a
+    visitor can't just set the cookie themselves to fake it.
+    """
+    if not session.get("is_admin"):
+        if request.method == "POST":
+            submitted_password = request.form.get("password", "")
+            if ADMIN_PASSWORD and submitted_password == ADMIN_PASSWORD:
+                session["is_admin"] = True
+                # Redirect back to a plain GET /admin instead of falling
+                # through here -- otherwise refreshing the page after
+                # login would re-submit the login form (the browser's
+                # "confirm form resubmission" prompt).
+                return redirect(url_for("admin"))
+            return render_template("admin_login.html", error="Wrong password.")
+        return render_template("admin_login.html", error=None)
+
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    # ---- Visits by page: total count per route, most-visited first.
+    cursor.execute("""
+        SELECT route, COUNT(*) AS visit_count
+        FROM page_visits
+        GROUP BY route
+        ORDER BY visit_count DESC
+    """)
+    route_rows = cursor.fetchall()
+    total_visits = sum(row["visit_count"] for row in route_rows)
+    max_route_visits = max((row["visit_count"] for row in route_rows), default=1)
+    route_bars = [
+        {
+            "route": row["route"],
+            "visit_count": row["visit_count"],
+            "width_pct": row["visit_count"] / max_route_visits * 100,
+        }
+        for row in route_rows
+    ]
+
+    # ---- Last 30 days: total visits per day, most recent first. SQLite's
+    # date() understands the ISO timestamps log_page_visit() writes, same
+    # as pulling just the date part out of a SQL Server datetime column.
+    cursor.execute("""
+        SELECT date(visited_at) AS day, COUNT(*) AS visit_count
+        FROM page_visits
+        WHERE date(visited_at) >= date('now', '-30 days')
+        GROUP BY day
+        ORDER BY day DESC
+    """)
+    day_rows = cursor.fetchall()
+    max_day_visits = max((row["visit_count"] for row in day_rows), default=1)
+    day_bars = [
+        {
+            "day": row["day"],
+            "visit_count": row["visit_count"],
+            "width_pct": row["visit_count"] / max_day_visits * 100,
+        }
+        for row in day_rows
+    ]
+
+    connection.close()
+
+    return render_template(
+        "admin_dashboard.html",
+        total_visits=total_visits,
+        route_bars=route_bars,
+        day_bars=day_bars,
+    )
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("admin"))
 
 
 @app.route("/power-rankings")

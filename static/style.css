@@ -575,6 +575,56 @@ h1 {
     color: var(--color-danger);
 }
 
+/* ---- Admin login form ---- */
+
+.admin-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-width: 280px;
+}
+
+.admin-login-form label {
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.admin-login-form input {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-text);
+    font-size: 0.95rem;
+    padding: 0.55rem 0.7rem;
+}
+
+.admin-login-form input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: var(--glow-box);
+}
+
+.btn {
+    background: var(--color-accent);
+    border: none;
+    border-radius: 6px;
+    color: var(--color-bg);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.6rem 1rem;
+}
+
+.btn:hover {
+    background: var(--color-accent-hover);
+}
+
 /* ---- Small screens ---- */
 
 .table-scroll {

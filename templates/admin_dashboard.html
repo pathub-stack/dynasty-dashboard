@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<div class="section-title-row">
+    <h1>Admin &middot; Site Traffic</h1>
+    <a href="{{ url_for('admin_logout') }}">Log Out</a>
+</div>
+<p class="section-hint">{{ total_visits }} total page visits recorded.</p>
+
+<div class="dash-grid">
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">All Time &middot; By Page</span>
+                <h3 class="dash-card__title">Visits by Page</h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in route_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank">{{ loop.index }}</span>
+                <div>
+                    <div class="bar-row__label">{{ row["route"] }}</div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%"></div></div>
+                </div>
+                <span class="bar-row__value">{{ row["visit_count"] }}</span>
+            </div>
+            {% else %}
+            <p class="section-hint">No visits recorded yet.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="dash-card">
+        <div class="dash-card__head">
+            <div>
+                <span class="dash-card__eyebrow">Last 30 Days</span>
+                <h3 class="dash-card__title">Daily Trend</h3>
+            </div>
+        </div>
+        <div class="dash-card__body">
+            {% for row in day_bars %}
+            <div class="bar-row">
+                <span class="bar-row__rank"></span>
+                <div>
+                    <div class="bar-row__label">{{ row["day"] }}</div>
+                    <div class="bar-track"><div class="bar-fill" style="width: {{ row['width_pct'] }}%"></div></div>
+                </div>
+                <span class="bar-row__value">{{ row["visit_count"] }}</span>
+            </div>
+            {% else %}
+            <p class="section-hint">No visits recorded yet.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+</div>
+{% endblock %}
