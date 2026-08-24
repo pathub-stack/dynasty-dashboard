@@ -1138,4 +1138,106 @@ other rather than one replacing the other.
   Render's own docs rather than assumed.
 
 ---
-*Last updated: 2026-08-23*
+
+## Session 2026-08-24 — Built the scheduled data refresh (APScheduler)
+
+### What we built
+
+Closed the gap flagged back on 2026-08-22: nothing was actually re-running
+`database.py`'s insert functions, so the dashboard could go stale (found
+this for real when a leaguemate's team-name change never showed up on the
+site). Built:
+
+- `refresh_all_data()` in `database.py` -- one function that calls
+  `create_tables()` + every `insert_*()` function in order. Same idea as
+  bundling several stored-proc calls into one job step.
+- Wired that into `app.py` with `APScheduler`'s `BackgroundScheduler`,
+  running hourly, with the first run firing immediately on startup
+  instead of waiting a full hour.
+
+Chose APScheduler-inside-Flask over an OS-level scheduler (cron / Windows
+Task Scheduler) because Render's Starter tier never spins down, so there's
+already a process sitting there to run it in -- no second Render service
+(a paid Cron Job) or separate local Task Scheduler setup needed. Same
+"no extra infrastructure" call already made for error logging and traffic
+tracking back in Stage 2.
+
+### New concepts learned
+
+**A background scheduler running *inside* the app process, not next to
+it.** `BackgroundScheduler` spins up its own thread and just calls a
+Python function on a timer -- no separate service, no OS involved at all.
+✅ Clicked once I saw it's really just "start a thread, sleep between
+calls" with a nicer API bolted on.
+
+**Flask's debug reloader secretly runs two processes.** `app.run(debug=True)`
+(what `python app.py` uses locally) launches a watcher process that
+restarts a second, real worker process whenever a file changes. Code that
+runs at import time -- like starting a scheduler -- would run in BOTH
+processes if not guarded, silently doubling every Sleeper API call. Fixed
+with a check on `WERKZEUG_RUN_MAIN`, an env var Flask only sets to
+`"true"` inside the real worker:
+
+```python
+# app.debug is False under gunicorn (Render/production), so the first
+# half alone covers prod. Locally, app.debug is True, so it falls through
+# to checking WERKZEUG_RUN_MAIN -- only "true" in the real worker process,
+# not the reloader's watcher -- so the scheduler still starts exactly once.
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=lambda: refresh_all_data(LEAGUE_ID),
+        trigger="interval",
+        hours=1,
+        next_run_time=datetime.now(),  # also run once immediately on startup
+    )
+    scheduler.start()
+```
+
+**A `lambda` as a quick one-line function.** `scheduler.add_job` needs a
+function it can call later with zero arguments, but `refresh_all_data`
+needs a `league_id` passed in. `lambda: refresh_all_data(LEAGUE_ID)`
+is a throwaway, unnamed function that takes no arguments and just calls
+`refresh_all_data(LEAGUE_ID)` when invoked -- same idea as wrapping a
+parameterized query in a no-arg stored proc so a caller that can't pass
+arguments still has something it can just execute.
+
+### Mistakes & fixes
+
+Tried testing with the real dev server (`python app.py`) and hit
+`An attempt was made to access a socket in a way forbidden by its access
+permissions` -- a Windows socket-binding error from *this specific sandbox
+environment* refusing to open a network port, unrelated to the scheduler
+code itself. Worked around it for testing by importing `app.py` directly
+in a script instead of calling `app.run()` -- that still runs all the
+same startup code (including the scheduler), just without needing to bind
+a port. Confirmed it actually worked by checking `dynasty.db` before and
+after: `roster_id 2` really did update from `"barttt"` to `"bart"`,
+pulled live from Sleeper. If the real socket error shows up again outside
+this sandbox, that's a separate thing to debug (probably a Windows
+Firewall / port-already-in-use issue), not a scheduler bug.
+
+### Code snippets worth remembering
+
+```python
+# database.py -- one function that bundles every table's refresh together,
+# reused by both the scheduler (app.py) and manual runs (database.py's
+# own __main__ block).
+def refresh_all_data(league_id=LEAGUE_ID):
+    create_tables()
+    insert_teams(league_id)
+    insert_weekly_scores(league_id)
+    insert_start_sit(league_id)
+    insert_faab_transactions(league_id)
+    insert_survivor_status(league_id)
+```
+
+**Also flagged, not fixed this session:** `insert_weekly_scores()` and
+`insert_faab_transactions()` both loop `range(1, last_played_week + 1)`
+every single time they run -- re-fetching *every* past week from Sleeper,
+not just new ones. Harmless today (well under the rate limit even at
+week 17), but wasteful, and worth fixing separately from this scheduling
+work. Logged in the Obsidian roadmap doc.
+
+---
+*Last updated: 2026-08-24*

@@ -373,6 +373,26 @@ def insert_start_sit(league_id):
             connection.close()
 
 
+def refresh_all_data(league_id=LEAGUE_ID):
+    """Run every insert_* function once, same order as the manual sanity
+    checks in the __main__ block below.
+
+    This is the one function the scheduled refresh (APScheduler, wired up
+    in app.py) calls on a timer -- same idea as a SQL Agent job running a
+    stored proc on a schedule, except the "job" lives inside the Flask
+    process itself instead of a separate scheduler service. Each insert_*
+    function already handles its own Sleeper API failures (logs + rolls
+    back), so one table failing to refresh doesn't stop the others from
+    running.
+    """
+    create_tables()
+    insert_teams(league_id)
+    insert_weekly_scores(league_id)
+    insert_start_sit(league_id)
+    insert_faab_transactions(league_id)
+    insert_survivor_status(league_id)
+
+
 if __name__ == "__main__":
     create_tables()
     print(f"Tables created in {DB_NAME}")

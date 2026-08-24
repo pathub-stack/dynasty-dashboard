@@ -5,12 +5,15 @@
 # crash a page load -- the dashboard just serves whatever's already in
 # dynasty.db until the next refresh happens.
 
+import os
 import sqlite3
 from datetime import datetime, timezone
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, render_template, request
 
-from database import DB_NAME, create_tables
+from database import DB_NAME, create_tables, refresh_all_data
+from sleeper import LEAGUE_ID
 
 app = Flask(__name__)
 
@@ -48,6 +51,29 @@ def get_team_colors(cursor):
 # makes sure page_visits (and every other table) exists before any route
 # or the before_request hook below tries to write to it.
 create_tables()
+
+# Background refresh: pulls fresh data from Sleeper on a timer (hourly) so
+# the dashboard doesn't go stale between manual `python database.py` runs
+# -- same idea as a scheduled SQL Agent job, except it runs as a
+# background thread inside this same process instead of a separate
+# scheduler service, since Render's Starter tier stays running anyway.
+#
+# Guarded so it only ever starts once. Flask's debug reloader
+# (app.run(debug=True), used locally) actually launches two processes --
+# a watcher and the real worker -- and without this check the scheduler
+# would start in both, doubling every Sleeper API call. WERKZEUG_RUN_MAIN
+# is only set to "true" inside the real worker process. In production
+# (gunicorn, where app.debug is False) the first half of the condition
+# alone is enough.
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=lambda: refresh_all_data(LEAGUE_ID),
+        trigger="interval",
+        hours=1,
+        next_run_time=datetime.now(),
+    )
+    scheduler.start()
 
 
 def get_db_connection():
