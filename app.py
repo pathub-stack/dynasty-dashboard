@@ -103,24 +103,35 @@ def get_db_connection():
     return connection
 
 
-@app.before_request
-def log_page_visit():
+@app.after_request
+def log_page_visit(response):
     """Write one row per request into page_visits -- route + timestamp.
 
-    Flask runs this before every route handler below, so it doesn't need
-    to be called manually in each one. Unlike every table in database.py,
-    this one really does want a plain autoincrement id: those other
-    tables get REPLACED on every refresh (same roster_id, fresher data),
-    but a page visit is a one-time event -- there's nothing to overwrite,
-    every request is a genuinely new row.
+    after_request (not before_request) specifically because it needs to
+    see the response's status code -- more on why below. Flask runs this
+    after every route handler, so it doesn't need to be called manually in
+    each one. Unlike every table in database.py, this one really does want
+    a plain autoincrement id: those other tables get REPLACED on every
+    refresh (same roster_id, fresher data), but a page visit is a one-time
+    event -- there's nothing to overwrite, every request is a genuinely
+    new row. Must return `response` -- that's the contract for an
+    after_request function, unlike before_request which returns nothing.
 
     Skips /static/ requests (CSS, images, etc.) -- those fire on every
     single page load alongside the real page request, so counting them
     here would drown out actual page views with "someone's browser
     fetched style.css again."
+
+    Also skips anything that 404'd. Browsers automatically probe for
+    things like /favicon.ico and /apple-touch-icon.png on every visit --
+    none of those are real routes in this app, so they'd otherwise get
+    logged as if someone visited a page called "/favicon.ico." Checking
+    the response status (only available here, in after_request, not in
+    before_request) catches this in general rather than hardcoding a list
+    of every icon filename a browser might ever ask for.
     """
-    if request.path.startswith("/static/"):
-        return
+    if request.path.startswith("/static/") or response.status_code == 404:
+        return response
 
     connection = get_db_connection()
     connection.execute(
@@ -129,6 +140,8 @@ def log_page_visit():
     )
     connection.commit()
     connection.close()
+
+    return response
 
 
 @app.route("/")

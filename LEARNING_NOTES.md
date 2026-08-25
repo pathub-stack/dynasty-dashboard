@@ -1311,6 +1311,22 @@ a before/after row count instead of just eyeballing the page -- caught
 this myself in testing because the admin page's own output looked wrong,
 not because it errored.
 
+**Round two of the same bug class, found after actually deploying and
+looking at real production data:** `/admin` on the live site showed
+`/favicon.ico` and five different `/apple-touch-icon*.png` variants as
+top "pages" -- browsers automatically probe for those on every visit, and
+none of them are real routes in this app, so they 404. `before_request`
+runs *before* Flask knows a request is about to 404, so it logged them
+anyway. Fixed properly this time instead of adding those five filenames
+to a blocklist: switched `log_page_visit()` from `@app.before_request` to
+`@app.after_request`, which runs *after* the response is built and can
+check `response.status_code`. Skip logging on any 404, not just these
+specific icon files -- so this also covers robots.txt, sitemap.xml, or
+anything else a browser/crawler probes for automatically in the future,
+not just today's list. ✅ Good example of "find the general rule, not
+just today's symptom" -- a hardcoded filename list would've needed
+editing again the next time a browser adds a new auto-probed file.
+
 ### Questions / still confused about ❓
 
 - How Flask's session-cookie signing actually works under the hood (noted
