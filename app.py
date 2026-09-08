@@ -179,7 +179,13 @@ def home():
         (latest_week,),
     )
     scoreboard_rows = cursor.fetchall()
-    max_score = max((row["points"] for row in scoreboard_rows), default=1)
+    # `or 1`, not just `default=1` -- default only covers an EMPTY
+    # scoreboard_rows. Early in a week, before any games have kicked off,
+    # scoreboard_rows is non-empty but every score is still 0.0, so
+    # max() legitimately returns 0 -- dividing by that crashed the page
+    # (ZeroDivisionError). `or 1` catches that falsy-but-not-missing 0
+    # case too.
+    max_score = max((row["points"] for row in scoreboard_rows), default=1) or 1
     scoreboard_bars = [
         {
             "team_name": row["team_name"],
@@ -223,7 +229,8 @@ def home():
         ORDER BY weekly_scores.points DESC
     """)
     season_high_rows = cursor.fetchall()
-    max_season_high = max((row["points"] for row in season_high_rows), default=1)
+    # Same 0-vs-empty distinction as max_score above -- see that comment.
+    max_season_high = max((row["points"] for row in season_high_rows), default=1) or 1
     season_high_bars = [
         {
             "team_name": row["team_name"],
