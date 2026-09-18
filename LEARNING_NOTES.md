@@ -1361,4 +1361,224 @@ if ADMIN_PASSWORD and submitted_password == ADMIN_PASSWORD:
 ```
 
 ---
-*Last updated: 2026-08-24*
+
+## Session 2026-09-08 — Fixing a live site outage (ZeroDivisionError on the home page)
+
+### What we built
+
+The live site (dynasty-dashboard-ijio.onrender.com) was throwing "Internal
+Server Error" on the home page. Tracked it down and shipped a fix, then
+walked through the actual git commands (I ran them myself this time
+instead of Claude Code doing it) to get it deployed.
+
+### New concepts learned
+
+**"Empty" and "zero" are two different problems, and `default=` in
+`max()` only solves one of them.** The buggy line was:
+```python
+max_score = max((row["points"] for row in scoreboard_rows), default=1)
+```
+`default=1` only kicks in if `scoreboard_rows` is an empty list (no
+matchups at all). It does *nothing* to protect against the list having
+real rows where every score is legitimately `0.0` -- which is exactly
+what happens in the window after matchups are created for the week but
+before any games have actually kicked off. `max()` of a list of zeros is
+`0`, not "missing," so `default` never fires, and `row["points"] /
+max_score` divides by that real `0`. ✅ Lesson: a `default=` on an
+aggregate function guards against *no data*, not against *data that
+happens to equal a falsy value*. Those are different failure modes and
+need different guards.
+
+**Fix used: `or 1` layered on top of `default=1`.**
+```python
+max_score = max((row["points"] for row in scoreboard_rows), default=1) or 1
+```
+`or 1` catches anything falsy that comes out the other side -- `0`
+specifically here -- and swaps in `1` instead, same as `COALESCE`, except
+`COALESCE` only catches `NULL` while Python's `or` catches *any* falsy
+value (`0`, `None`, `""`, `[]`, `False`). That's a double-edged tool: fine
+here since `points` can't legitimately be a negative-but-still-falsy
+number, but worth remembering `or` is broader than `COALESCE` before
+reusing this pattern somewhere a real `0` *should* survive.
+
+**Reproducing a prod-only bug locally.** Rather than guessing from
+reading the code, ran the actual Flask dev server locally
+(`python app.py`) against the same `dynasty.db` and hit `/` with
+`Invoke-WebRequest` -- got the exact same traceback Render would've
+logged, with Werkzeug's debugger pinpointing the exact line. Confirmed
+the fix the same way afterward: reran, got a 200 instead of a 500. ✅
+Much faster than reasoning about it in the abstract, and it's the same
+instinct as reproducing a bug against a real query in SSMS before trusting
+a fix.
+
+### Mistakes & fixes
+
+Not a mistake made *this* session, but the bug itself is worth noting as
+a category: it was a latent bug sitting in the Stage 3 home-page code
+since it was written, invisible the whole time because every score
+happened to be non-zero whenever it was tested. It only surfaced once the
+real season actually started and there was a genuine 0-0 moment. Same
+shape as the pre-season `min()`/`max()`-on-empty bugs from the
+2026-08-23 session (logged earlier in this file) -- another case of code
+that was fine for every state I'd actually tested, but not for a state
+that hadn't happened yet.
+
+### Questions / still confused about ❓
+
+None new this session -- straightforward once reproduced.
+
+### Code snippets worth remembering
+
+```python
+# Guard against BOTH "no rows" and "rows, but the aggregate is falsy" --
+# default= alone only covers the first case.
+max_score = max((row["points"] for row in scoreboard_rows), default=1) or 1
+```
+
+Full git workflow for shipping a fix (ran manually this session):
+```bash
+git status              # see what changed
+git diff app.py         # review the actual diff before staging
+git add app.py           # stage it -- like building a transaction before COMMIT
+git commit -m "..."      # COMMIT -- saved to local history, not remote yet
+git push                 # send commits to GitHub -- this is what triggers
+                          # Render's auto-deploy, nothing before this step does
+```
+
+---
+
+## Session 2026-09-17 — Fixed survivor/Best Single Week jumping the gun mid-week
+
+### What we built
+
+Caught a real logic bug from actually using the live site once the real
+season started: Survivor was marking someone "Eliminated" and the home
+page's Best Single Week card could show a score from a week that was
+still being *played*, not actually over yet. Root cause was the same
+one thing in four different places: `league_info["settings"]["leg"]` is
+Sleeper's name for the week **currently being played**, not the last one
+that finished -- but `calculations.py` and `database.py` were both
+treating it as "last played week" and looping `range(1, leg + 1)`,
+which includes that still-in-progress week.
+
+Fixed it in two layers:
+- **`calculations.py`** -- `get_survivor_results()` and
+  `get_season_high_scores()` now use `leg - 1` ("last *decided* week")
+  instead of `leg`.
+- **`app.py`** -- the home page's Season High / Weekly High queries read
+  straight from `weekly_scores` via SQL, bypassing `calculations.py`
+  entirely, so they needed their own fix. But `app.py` deliberately
+  never calls the Sleeper API itself (it only ever reads `dynasty.db`),
+  so it had no way to know "which week is in progress" -- which is the
+  actual reason we added a new single-row `league_status` table,
+  written by a new `insert_league_status()` in `database.py` on every
+  refresh, plus a `current_week` badge in the nav (`base.html`) so it's
+  not just invisible plumbing.
+
+Important thing this *didn't* touch: `weekly_scores` itself still gets
+written for the in-progress week (that's what makes the live
+`/scoreboard` page work) -- only the "who won" *determinations*
+(survivor, season high, weekly high) needed to stop short of it.
+
+### New concepts learned
+
+**A field name can lie about what it actually means.** `leg` sounds
+like it'd mean "the leg that's been completed" but it's really "the leg
+currently being played" -- nothing in the field name itself tells you
+that, only actually reading Sleeper's real behavior (this league sitting
+at `leg = 2` with Week 2 mid-game) proved it. ✅ Same lesson as last
+month's transaction `type`/`status` exploration: don't assume a field
+means what its name suggests, check what it actually holds.
+
+**Flask's `@app.context_processor`.**
+```python
+@app.context_processor
+def inject_current_week():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    current_week = get_current_week(cursor)
+    connection.close()
+    return {"current_week": current_week}
+```
+Runs before *every* template render and merges whatever dict it returns
+into that template's variables automatically -- so `base.html`'s nav
+(shared by every page) can use `{{ current_week }}` without every single
+route handler having to query for it and pass it into `render_template()`
+by hand. SQL analogy: closest thing I know is a view that's implicitly
+joined onto every query without each query having to write the join
+itself.
+
+**A single-row table, enforced by the schema itself, not just convention.**
+```sql
+CREATE TABLE league_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    current_week INTEGER
+)
+```
+Every write is `INSERT OR REPLACE INTO league_status (id, current_week)
+VALUES (1, ?)` -- always the same `id`, so it always overwrites the one
+row instead of accumulating history (this is "what's true right now,"
+not something we want a week-by-week history of, unlike `weekly_scores`).
+The `CHECK (id = 1)` isn't just documentation either -- SQLite would
+actually reject an insert that tried to use any other id. First time
+we've used `CHECK` for real in this project.
+
+**`week < NULL` in SQL is neither true nor false -- it's unknown, and
+unknown rows just don't match.** `current_week` can be `None` (a brand
+new database, no refresh has run yet). Passing that straight in as a
+query parameter --
+```sql
+WHERE weekly_scores.week < ?  -- param = None
+```
+-- doesn't error and doesn't need a special case. SQLite (like SQL
+Server) treats any comparison against `NULL` as unknown, so the `WHERE`
+just matches zero rows -- which is exactly the right answer ("we don't
+know what's decided yet") without writing an explicit `if current_week
+is None` branch.
+
+### Mistakes & fixes
+
+No crashes or wrong turns this session -- this one was caught by
+reasoning about what `leg` actually represents *before* writing any
+code (confirmed against the real league actually sitting at Week 2 mid-
+game), rather than shipping something and finding the bug later. Verified
+it worked by running `database.py` for real afterward: Week 1 (finished)
+correctly eliminated `bart`, Week 2 (in progress) wasn't touched at all,
+and Best Single Week correctly still points at Week 1's top score even
+though Week 2 already has live partial scores sitting in `weekly_scores`.
+
+### Questions / still confused about ❓
+
+- None new -- this was a clean root-cause fix, not a debugging session.
+
+### Code snippets worth remembering
+
+```python
+# "leg" is the week CURRENTLY being played, not the last one that
+# finished -- leg - 1 is the last week whose scores are actually final.
+last_decided_week = league_info["settings"]["leg"] - 1
+```
+
+```python
+# context_processor makes a value available in every template
+# automatically, without every route passing it in by hand
+@app.context_processor
+def inject_current_week():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    current_week = get_current_week(cursor)
+    connection.close()
+    return {"current_week": current_week}
+```
+
+```sql
+-- CHECK enforces "this table only ever has one row" at the schema
+-- level, not just by convention
+CREATE TABLE league_status (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    current_week INTEGER
+)
+```
+
+---
+*Last updated: 2026-09-17*

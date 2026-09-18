@@ -101,6 +101,17 @@ def create_tables():
         )
     """)
 
+    # Single-row table: id is always 1, so every refresh overwrites that
+    # same row instead of accumulating history. This holds "what's true
+    # right now" (which week is currently being played), not something
+    # that needs a week-by-week history the way weekly_scores does.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS league_status (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            current_week INTEGER
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS start_sit (
             roster_id INTEGER,
@@ -213,6 +224,40 @@ def insert_weekly_scores(league_id):
         connection.commit()
     except requests.exceptions.RequestException:
         logging.error("insert_weekly_scores: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
+
+
+def insert_league_status(league_id):
+    """Pull the league's current week ("leg") and store it.
+
+    This is the one piece of state Flask needs in order to know "which
+    week is still being played" without calling the Sleeper API itself --
+    app.py only ever reads dynasty.db (see its file header comment). Used
+    to exclude the in-progress week's partial scores from things like
+    Best Single Week until that week is actually decided.
+
+    Wrapped in try/except like insert_teams.
+    """
+    connection = None
+    try:
+        league_info = get_league_info(league_id)
+        current_week = league_info["settings"]["leg"]
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO league_status (id, current_week) VALUES (1, ?)",
+            (current_week,),
+        )
+
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_league_status: Sleeper API call failed, skipping this refresh")
         if connection:
             connection.rollback()
     finally:
@@ -387,6 +432,7 @@ def refresh_all_data(league_id=LEAGUE_ID):
     """
     create_tables()
     insert_teams(league_id)
+    insert_league_status(league_id)
     insert_weekly_scores(league_id)
     insert_start_sit(league_id)
     insert_faab_transactions(league_id)
@@ -406,6 +452,15 @@ if __name__ == "__main__":
     cursor.execute("SELECT roster_id, team_name, owner_name FROM teams")
     for row in cursor.fetchall():
         print(row)
+    connection.close()
+
+    insert_league_status(LEAGUE_ID)
+    print("League status inserted")
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT current_week FROM league_status")
+    print(cursor.fetchone())
     connection.close()
 
     insert_weekly_scores(LEAGUE_ID)

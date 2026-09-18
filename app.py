@@ -44,6 +44,20 @@ TEAM_COLOR_PALETTE = [
 ]
 
 
+def get_current_week(cursor):
+    """Return the week currently being played, or None if no refresh has
+    run yet (e.g. a brand-new database).
+
+    Read from league_status -- written by database.py's
+    insert_league_status() -- instead of calling Sleeper directly. This
+    file never touches the Sleeper API itself, only dynasty.db (see the
+    file header comment above).
+    """
+    cursor.execute("SELECT current_week FROM league_status WHERE id = 1")
+    row = cursor.fetchone()
+    return row["current_week"] if row else None
+
+
 def get_team_colors(cursor):
     """Return a dict mapping team_name -> a hex color, one per team.
 
@@ -103,6 +117,21 @@ def get_db_connection():
     return connection
 
 
+@app.context_processor
+def inject_current_week():
+    """Make current_week available in every template automatically --
+    same idea as a value every view has access to without each route
+    having to fetch and pass it in individually. Runs on every request
+    with its own connection, independent of whatever a specific route's
+    handler is doing with its own.
+    """
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    current_week = get_current_week(cursor)
+    connection.close()
+    return {"current_week": current_week}
+
+
 @app.after_request
 def log_page_visit(response):
     """Write one row per request into page_visits -- route + timestamp.
@@ -157,6 +186,7 @@ def home():
     cursor = connection.cursor()
 
     team_colors = get_team_colors(cursor)
+    current_week = get_current_week(cursor)
 
     # ---- Standings: placeholder only -- win/loss records aren't tracked
     # anywhere yet (that's a real feature, not built), so this just lists
@@ -219,15 +249,28 @@ def home():
     # ---- Season High Score: every week's top scorer(s), ranked across the
     # whole season. Same "greatest-n-per-group" subquery as /start-sit uses
     # (max value per group), just grouped by week instead of by roster_id.
-    cursor.execute("""
+    #
+    # weekly_scores.week < current_week excludes the week still being
+    # played -- its scores in weekly_scores are live/partial (correct for
+    # the /scoreboard page, which wants to show games in progress), but
+    # not yet a "final" week score, so it shouldn't be eligible to win
+    # Season High Score until it's actually over. current_week can be
+    # None (no refresh has run yet) -- SQLite treats week < NULL as
+    # unknown for every row, so this naturally returns nothing rather
+    # than erroring.
+    cursor.execute(
+        """
         SELECT weekly_scores.week, teams.team_name, weekly_scores.points
         FROM weekly_scores
         JOIN teams ON teams.roster_id = weekly_scores.roster_id
-        WHERE weekly_scores.points = (
+        WHERE weekly_scores.week < ?
+          AND weekly_scores.points = (
             SELECT MAX(w2.points) FROM weekly_scores AS w2 WHERE w2.week = weekly_scores.week
         )
         ORDER BY weekly_scores.points DESC
-    """)
+        """,
+        (current_week,),
+    )
     season_high_rows = cursor.fetchall()
     # Same 0-vs-empty distinction as max_score above -- see that comment.
     max_season_high = max((row["points"] for row in season_high_rows), default=1) or 1
@@ -250,16 +293,22 @@ def home():
     # ---- Weekly High Score win tally: how many times has each team posted
     # that week's top score? Reuses the exact same per-week-max subquery
     # above, just GROUPed by team to count wins instead of listing each one.
-    cursor.execute("""
+    # Same current_week exclusion as Season High Score above -- the
+    # in-progress week hasn't produced a decided weekly winner yet.
+    cursor.execute(
+        """
         SELECT teams.team_name, COUNT(*) AS wins
         FROM weekly_scores
         JOIN teams ON teams.roster_id = weekly_scores.roster_id
-        WHERE weekly_scores.points = (
+        WHERE weekly_scores.week < ?
+          AND weekly_scores.points = (
             SELECT MAX(w2.points) FROM weekly_scores AS w2 WHERE w2.week = weekly_scores.week
         )
         GROUP BY teams.roster_id
         ORDER BY wins DESC
-    """)
+        """,
+        (current_week,),
+    )
     weekly_high_tally = cursor.fetchall()
 
     # ---- Start/Sit %: same query as /start-sit ----

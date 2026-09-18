@@ -29,10 +29,14 @@ def get_survivor_results(league_id):
     """
     team_names_by_roster = get_team_names_by_roster(league_id)
 
-    # How many weeks this league has actually played -- "leg" is Sleeper's
-    # name for the most recent completed/current week.
+    # "leg" is Sleeper's name for the week currently being played -- NOT
+    # the last one that finished. Its matchups can still be mid-game (some
+    # teams haven't played yet), so eliminating someone off it would be
+    # jumping the gun. leg - 1 is the last week we can actually call
+    # final. Early in the season leg can be 1 (or even 0 pre-draft), so
+    # this can go to 0 -- the loop below just won't run, same as before.
     league_info = get_league_info(league_id)
-    last_played_week = league_info["settings"]["leg"]
+    last_decided_week = league_info["settings"]["leg"] - 1
 
     # A set of roster_ids still in the running. Sets are like a table with
     # a unique constraint and no ordering — perfect for "who's still alive,"
@@ -41,7 +45,7 @@ def get_survivor_results(league_id):
 
     eliminations = []
 
-    for week in range(1, last_played_week + 1):
+    for week in range(1, last_decided_week + 1):
         if len(alive) <= 1:
             break
 
@@ -133,11 +137,14 @@ def get_season_high_scores(league_id):
     """
     team_names_by_roster = get_team_names_by_roster(league_id)
 
+    # Same reasoning as get_survivor_results(): "leg" is the week currently
+    # being played, not the last one that finished, so leg - 1 is the last
+    # week whose scores are actually final.
     league_info = get_league_info(league_id)
-    last_played_week = league_info["settings"]["leg"]
+    last_decided_week = league_info["settings"]["leg"] - 1
 
     weekly_highs = []
-    for week in range(1, last_played_week + 1):
+    for week in range(1, last_decided_week + 1):
         matchups = get_league_matchups(league_id, week)
 
         if not matchups:

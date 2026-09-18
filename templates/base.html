@@ -13,6 +13,9 @@
     <header class="site-header">
         <nav class="site-nav">
             <a class="site-brand" href="{{ url_for('home') }}">This Is Never Going To Work</a>
+            {% if current_week %}
+            <span class="current-week-badge">Week {{ current_week }} in progress</span>
+            {% endif %}
             <div class="site-nav-links">
                 <a class="is-coming-soon" href="{{ url_for('history') }}">League History</a>
                 <a class="is-coming-soon" href="{{ url_for('draft_picks') }}">2027 Draft Picks</a>
