@@ -1,6 +1,9 @@
 # Business logic that runs on top of the raw data from sleeper.py:
 # survivor pot, start/sit %, high score tracking.
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from sleeper import (
     get_league_info,
     get_league_matchups,
@@ -8,6 +11,42 @@ from sleeper import (
     get_team_names_by_roster,
     TEST_LEAGUE_ID,
 )
+
+
+def get_effective_current_week(league_info):
+    """Return the week that's still "in progress" -- i.e. the first week
+    NOT yet safe to use for survivor eliminations or high score winners.
+
+    You'd think Sleeper's own "leg" setting (the week currently being
+    played) would already be this. It mostly is, except for one gap:
+    Monday Night Football is the last game of any week, but Sleeper
+    doesn't roll "leg" forward to the next week until Wednesday morning --
+    a full day after that week is actually decided. That's not a stat-
+    correction safeguard on Sleeper's part either (corrections trickle in
+    Tuesday regardless of what "leg" says); it's just Sleeper's own fixed
+    weekly cycle running one day behind what the schedule allows.
+
+    So every day except Tuesday, "leg" is already correct as-is. On
+    Tuesday specifically, the week "leg" points at has already finished
+    (MNF was the night before) even though Sleeper hasn't rolled the
+    number forward yet -- so the cutoff gets nudged a week early.
+
+    This is a day-of-week check, not a stat-correction check -- a real
+    correction landing Tuesday into Wednesday could still, rarely, flip
+    something decided on this dashboard a day before Sleeper itself would
+    have shown it. Acceptable for a friends' league dashboard; not
+    something to lean on if real money depended on same-day certainty.
+
+    One known edge case this doesn't account for: a handful of weeks
+    (Thanksgiving, Christmas) move the "last game of the week" off Monday
+    entirely. Not worth special-casing for a 12-team dynasty league --
+    worst case those specific weeks are briefly a day later than ideal,
+    same as every week was before this fix.
+    """
+    leg = league_info["settings"]["leg"]
+    today_eastern = datetime.now(ZoneInfo("America/New_York"))
+    is_tuesday = today_eastern.weekday() == 1  # Monday=0, Tuesday=1
+    return leg + 1 if is_tuesday else leg
 
 
 def get_survivor_results(league_id):
@@ -29,14 +68,13 @@ def get_survivor_results(league_id):
     """
     team_names_by_roster = get_team_names_by_roster(league_id)
 
-    # "leg" is Sleeper's name for the week currently being played -- NOT
-    # the last one that finished. Its matchups can still be mid-game (some
-    # teams haven't played yet), so eliminating someone off it would be
-    # jumping the gun. leg - 1 is the last week we can actually call
-    # final. Early in the season leg can be 1 (or even 0 pre-draft), so
-    # this can go to 0 -- the loop below just won't run, same as before.
+    # get_effective_current_week() is the week NOT yet safe to call final
+    # (see its own docstring -- it's "leg", nudged a day early on
+    # Tuesdays). One week before that is the last one we can actually
+    # call final. Early in the season this can go to 0 (or even negative
+    # pre-draft) -- the loop below just won't run, same as before.
     league_info = get_league_info(league_id)
-    last_decided_week = league_info["settings"]["leg"] - 1
+    last_decided_week = get_effective_current_week(league_info) - 1
 
     # A set of roster_ids still in the running. Sets are like a table with
     # a unique constraint and no ordering — perfect for "who's still alive,"
@@ -137,11 +175,11 @@ def get_season_high_scores(league_id):
     """
     team_names_by_roster = get_team_names_by_roster(league_id)
 
-    # Same reasoning as get_survivor_results(): "leg" is the week currently
-    # being played, not the last one that finished, so leg - 1 is the last
-    # week whose scores are actually final.
+    # Same reasoning as get_survivor_results() -- see
+    # get_effective_current_week()'s docstring for why this isn't simply
+    # "leg - 1".
     league_info = get_league_info(league_id)
-    last_decided_week = league_info["settings"]["leg"] - 1
+    last_decided_week = get_effective_current_week(league_info) - 1
 
     weekly_highs = []
     for week in range(1, last_decided_week + 1):

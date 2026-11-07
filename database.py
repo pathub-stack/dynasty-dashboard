@@ -17,7 +17,11 @@ from sleeper import (
     get_player_names,
     LEAGUE_ID,
 )
-from calculations import get_survivor_results, get_start_sit_percentages
+from calculations import (
+    get_survivor_results,
+    get_start_sit_percentages,
+    get_effective_current_week,
+)
 
 
 # Locally this is just "dynasty.db" in the project folder. On Render,
@@ -232,20 +236,26 @@ def insert_weekly_scores(league_id):
 
 
 def insert_league_status(league_id):
-    """Pull the league's current week ("leg") and store it.
+    """Pull the league's current week and store it.
 
     This is the one piece of state Flask needs in order to know "which
-    week is still being played" without calling the Sleeper API itself --
+    week is still in progress" without calling the Sleeper API itself --
     app.py only ever reads dynasty.db (see its file header comment). Used
     to exclude the in-progress week's partial scores from things like
     Best Single Week until that week is actually decided.
+
+    get_effective_current_week() rather than the raw "leg" setting --
+    see its docstring in calculations.py. Keeping this one place in sync
+    with the same logic get_survivor_results()/get_season_high_scores()
+    use is what keeps the home page's cutoff and the survivor/high-score
+    pages' cutoffs from silently drifting apart.
 
     Wrapped in try/except like insert_teams.
     """
     connection = None
     try:
         league_info = get_league_info(league_id)
-        current_week = league_info["settings"]["leg"]
+        current_week = get_effective_current_week(league_info)
 
         connection = get_connection()
         cursor = connection.cursor()
