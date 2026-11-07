@@ -1581,4 +1581,151 @@ CREATE TABLE league_status (
 ```
 
 ---
-*Last updated: 2026-09-17*
+
+## Session 2026-11-07: Standings on the home page (I wrote most of the code this time)
+
+### What we built
+
+Took `get_standings()` (already written, returns all 12 teams in bylaws
+order) and wired it all the way through to the website, same pipeline as
+every other feature:
+
+Sleeper API → `calculations.py` → `database.py` insert → `dynasty.db` →
+`app.py` query → template
+
+- New `standings` table in `create_tables()`: roster_id, wins, losses,
+  pf, max_pf, rank
+- New `insert_standings()` in `database.py`, added to `refresh_all_data()`
+  so the hourly refresh keeps it current
+- Home page query now JOINs `standings` to `teams`, `ORDER BY rank`
+- Home page table shows Rank / Team / Record / PF / Max PF, with a green
+  line under rank 6 (the playoff cutoff), gold/silver/bronze for the top 3
+- 1st/2nd Place payout tiles now say "decided in Week 17" instead of
+  "Needs a standings feature" (those come from the playoffs, not standings)
+- Bylaws link in the top nav, pointing at the league's Google Doc
+
+### New concepts learned
+
+✅ **Store the rank, don't recompute it in SQL.** The bylaws sort is two
+passes (all 12 by wins then PF, then the bottom 6 re-sorted by wins then
+Max PF). That's awkward to write as one `ORDER BY`. So Python works out the
+order once, I save the position as a `rank` column, and the website query
+is just `ORDER BY rank`. The bylaws logic lives in exactly one place.
+
+✅ **`enumerate()` is Python's `ROW_NUMBER()`.** It numbers rows by their
+position in an already-sorted list. The rank isn't IN the data, it's
+generated:
+```python
+for rank, (roster_id, _team_name, wins, losses, pf, max_pf) in enumerate(standings, start=1):
+#   ^ the number enumerate adds   ^ the original 6-item row, unpacked
+```
+`start=1` matters, otherwise first place is rank 0.
+
+✅ **Tuple unpacking has to match the shape exactly.** `get_standings()`
+returns 6 items per row. I have to name all 6, even ones I don't use.
+`_team_name` (leading underscore) is the convention for "unpacking this
+because I have to, not using it." Too few names = "too many values to
+unpack", too many names = "not enough values to unpack."
+
+✅ **A parameterized INSERT has three lists that must line up:** the
+column list, the `?` placeholders, and the Python values tuple. Same count,
+same order. Adding a column means touching all three in one edit.
+
+✅ **"It compiles" doesn't mean "it works."** `py_compile` only checks
+syntax (is this shaped like Python). A wrong variable name or a column
+that doesn't exist only blows up when that line actually runs. Like a SQL
+query that parses but fails on an invalid column name at execution.
+
+✅ **A `try:` with no `except`/`finally` breaks the WHOLE file**, not just
+that function. Python checks the entire file's syntax before running any
+of it, so `app.py` couldn't even import `database.py`.
+
+✅ **Jinja fails silently on unknown variable names.** If the template
+loops over a name `app.py` didn't send (an old name, a typo, a leftover
+`___`), it's treated as empty: the table just shows no rows, no error. If a
+table is ever mysteriously empty, check the variable names first.
+
+✅ **`cursor.fetchall()` vs a list comprehension.** The old placeholder
+did `[row["team_name"] for row in cursor.fetchall()]`, which keeps only
+one column (like wrapping the query in `SELECT team_name FROM (...)`).
+The template needs every column now, so it's just `cursor.fetchall()`.
+
+✅ **SQLite is looser than SQL Server about column types.** An `INTEGER`
+column will quietly keep a decimal like 1342.56. I'd get away with it, but
+`REAL` is the honest type for PF.
+
+### Mistakes & fixes
+
+Lots this time, since I was writing it myself. Every one was a real lesson:
+- **CREATE TABLE with no commas between columns.** SQLite read the whole
+  thing as one column with a giant multi-word type name, then choked at
+  `PRIMARY KEY (`. Error was the unhelpful `near "(": syntax error`.
+- **`FOREIGN KEY (roster_id)` with nothing after it.** Needs
+  `REFERENCES teams(roster_id)`.
+- **`pf`/`max_pf` as `INTEGER`.** Changed to `REAL` (see above).
+- **`try:` with no `except`.** SyntaxError pointing at the NEXT function,
+  which was confusing. Copied the except/finally from `insert_start_sit()`.
+- **Put `team_name` in the INSERT**, but the `standings` table doesn't have
+  that column (it's in `teams`, I JOIN for it).
+- **Unpacking mismatches, both directions.** Dropped `_team_name` (5 names
+  for 6 values), then added `rank` at the end (7 names for 6 values). The
+  fix was `enumerate`, since rank isn't in the tuple at all.
+- **6 `?` placeholders but 5 columns and 5 values.** "6 values for 5 columns."
+- **Home page query had no JOIN**, so `team_name` didn't exist. That would
+  have 500'd the whole home page, not just the table.
+- **Edits not saved in VS Code** a couple of times. Checked for the dot on
+  the tab. Turning on Auto Save would prevent this.
+- **Bylaws:** started building a `/bylaws` page from `BYLAWS.md`, then
+  realized the Google Doc is the real version (and the two had drifted,
+  e.g. 1 IR slot vs 2). Switched to just linking the Doc instead of
+  keeping two copies in sync.
+
+### Questions / still confused about ❓
+
+- ❓ The two-level unpacking with `enumerate` (`rank, (a, b, c)`) took a
+  few tries to get. I get it now, but it's not automatic yet.
+- ❓ `BYLAWS.md` in the repo is behind the Google Doc. Need to sync it at
+  some point, since Claude Code still reads it for rules.
+
+### Code snippets worth remembering
+
+```python
+# insert pattern: try / except / finally, same shape as T-SQL TRY/CATCH + ROLLBACK
+connection = None                                   # so finally can check it even if connecting fails
+try:
+    standings = get_standings(league_id)            # API calls happen here, can raise
+    connection = get_connection()
+    cursor = connection.cursor()
+    for rank, (roster_id, _team_name, wins, losses, pf, max_pf) in enumerate(standings, start=1):
+        cursor.execute(
+            "INSERT OR REPLACE INTO standings (roster_id, wins, losses, pf, max_pf, rank) VALUES (?, ?, ?, ?, ?, ?)",
+            (roster_id, wins, losses, pf, max_pf, rank),   # 6 columns, 6 ?, 6 values
+        )
+    connection.commit()                             # nothing is saved until this
+except requests.exceptions.RequestException:
+    logging.error("insert_standings: Sleeper API call failed, skipping this refresh")
+    if connection:
+        connection.rollback()                       # don't keep half a refresh
+finally:
+    if connection:
+        connection.close()                          # always runs, error or not
+```
+
+```html
+<!-- Jinja: loop the rows app.py sent, print columns by name -->
+{% for row in standings_rows %}                     <!-- like a cursor over the result set -->
+<tr{% if row["rank"] == 6 %} class="playoff-cutoff"{% endif %}>  <!-- green line under the last playoff spot -->
+    <td>{{ row["rank"] }}</td>                       <!-- {{ }} = print this value -->
+    <td>{{ row["wins"] }}-{{ row["losses"] }}</td>    <!-- two columns in one cell: 6-2 -->
+    <td>{{ "%.2f"|format(row["pf"]) }}</td>          <!-- always 2 decimals -->
+</tr>
+{% endfor %}
+```
+
+⚠️ **Don't run `pip freeze > requirements.txt` blindly.** `gunicorn` is
+only installed on Render, not on my machine, so freeze leaves it out, and
+overwriting the file would break the next deploy. Add new packages to
+`requirements.txt` by hand.
+
+---
+*Last updated: 2026-11-07*

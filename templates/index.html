@@ -50,15 +50,15 @@
         <div class="payout-tile payout-tile--pending">
             <span class="payout-tile__category">1st Place</span>
             <span class="payout-tile__pot">$870 total</span>
-            <div class="payout-tile__leader">Coming Soon</div>
-            <div class="payout-tile__note">Needs a standings feature</div>
+            <div class="payout-tile__leader">TBD</div>
+            <div class="payout-tile__note">Champion, decided in Week 17</div>
         </div>
 
         <div class="payout-tile payout-tile--pending">
             <span class="payout-tile__category">2nd Place</span>
             <span class="payout-tile__pot">$300 total</span>
-            <div class="payout-tile__leader">Coming Soon</div>
-            <div class="payout-tile__note">Needs a standings feature</div>
+            <div class="payout-tile__leader">TBD</div>
+            <div class="payout-tile__note">Runner-up, decided in Week 17</div>
         </div>
     </div>
 
@@ -66,15 +66,20 @@
 
 <div class="section-title-row">
     <h2 class="section-title">Standings</h2>
-    <span class="badge-soon">Coming Soon</span>
 </div>
-<p class="section-hint">Win-loss records and points aren't tracked yet. Teams shown for reference.</p>
+<p class="section-hint">Top 6 make the playoffs (Weeks 15-17). Ties are broken by PF.</p>
 
 <div class="table-scroll" style="margin-bottom: 2.5rem;">
     <table class="leaderboard">
-        <tr><th>Team</th><th>Record</th><th>PF</th></tr>
-        {% for team_name in standings_teams %}
-        <tr><td>{{ team_name }}</td><td>TBD</td><td>TBD</td></tr>
+        <tr><th>Rank</th><th>Team</th><th>Record</th><th>PF</th><th>Max PF</th></tr>
+        {% for row in standings_rows %}
+        <tr{% if row["rank"] == 6 %} class="playoff-cutoff"{% endif %}>
+            <td class="rank{% if row["rank"] <= 3 %} rank-{{ row["rank"] }}{% endif %}">{{ row["rank"] }}</td>
+            <td>{{ row["team_name"] }}</td>
+            <td>{{ row["wins"] }}-{{ row["losses"] }}</td>
+            <td>{{ "%.2f"|format(row["pf"]) }}</td>
+            <td>{{ "%.2f"|format(row["max_pf"]) }}</td>
+        </tr>
         {% endfor %}
     </table>
 </div>

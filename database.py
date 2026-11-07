@@ -21,6 +21,7 @@ from calculations import (
     get_survivor_results,
     get_start_sit_percentages,
     get_effective_current_week,
+    get_standings,
 )
 
 
@@ -124,6 +125,19 @@ def create_tables():
             max_pf REAL,
             percentage REAL,
             PRIMARY KEY (roster_id, week),
+            FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS standings (
+            roster_id INTEGER,
+            wins INTEGER,
+            losses INTEGER,
+            pf REAL,
+            max_pf REAL,
+            rank INTEGER,
+            PRIMARY KEY (roster_id),
             FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
         )
     """)
@@ -386,6 +400,35 @@ def insert_faab_transactions(league_id):
         if connection:
             connection.close()
 
+def insert_standings(league_id):
+    """
+    Write each team's current record, PF, max PF and bylaws rank into standings
+    """
+
+    connection = None
+    try:
+        standings = get_standings(league_id)
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        for rank, (roster_id, _team_name, wins, losses, pf, max_pf) in enumerate(standings, start=1):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO standings (roster_id, wins, losses, pf, max_pf, rank)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (roster_id, wins, losses, pf, max_pf, rank)
+            )
+
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_standings: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
 
 def insert_start_sit(league_id):
     """Snapshot each team's season-to-date PF / Max PF / start-sit % and
@@ -447,6 +490,7 @@ def refresh_all_data(league_id=LEAGUE_ID):
     insert_start_sit(league_id)
     insert_faab_transactions(league_id)
     insert_survivor_status(league_id)
+    insert_standings(league_id)
 
 
 if __name__ == "__main__":

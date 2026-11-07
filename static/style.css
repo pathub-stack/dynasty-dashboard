@@ -567,6 +567,13 @@ h1 {
 .leaderboard .rank-2 { color: var(--color-silver); }
 .leaderboard .rank-3 { color: var(--color-bronze); }
 
+/* Line under the last playoff spot (rank 6) on the home page standings.
+   Accent green so it reads as "in" vs "out", same color as everything
+   else that means "good" on the site. */
+.leaderboard tr.playoff-cutoff td {
+    border-bottom: 2px solid var(--color-accent);
+}
+
 /* ---- Status pills (survivor page) ---- */
 
 .status-pill {

@@ -91,7 +91,7 @@ At the end of every coding session, update `LEARNING_NOTES.md` with a new entry.
 | `calculations.py` | Logic for survivor, start/sit %, high score |
 | `app.py` | Flask web app |
 | `templates/index.html` | HTML for the dashboard |
-| `requirements.txt` | Package list (run `pip freeze > requirements.txt` after installs) |
+| `requirements.txt` | Package list. Add new packages by hand, don't overwrite with `pip freeze` (gunicorn is only installed on Render, so freeze would drop it and break deploys) |
 
 ---
 
@@ -206,6 +206,12 @@ Stage 3 — Polished UI:
   in `static/style.css` + `templates/*.html`.
 - Tables and leaderboards ✅ (leaderboard-styled tables, status pills on
   survivor). Charts still optional, not built — not requested for v1.
+- Standings ✅ 2026-11-07. `standings` table (roster_id, wins, losses,
+  pf, max_pf, rank) filled by `insert_standings()` from
+  `get_standings()`. `rank` is stored because the bylaws two-pass sort
+  can't be a plain ORDER BY. Home page table shows it with a playoff
+  cutoff line under rank 6. Nav has a Bylaws link to the league's Google
+  Doc, which is the official version; `BYLAWS.md` in the repo is behind it.
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change
 indicator) considered and intentionally deferred to "someday," not v1 —

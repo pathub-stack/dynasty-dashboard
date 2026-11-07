@@ -16,6 +16,8 @@ __pycache__/
 # SQLite database (mentioned in CLAUDE.md as the planned data layer) -
 # generated from the Sleeper API, not something to version control
 *.db
+# SQLite's temporary rollback file, exists only while a write is in progress
+*.db-journal
 
 # Cached copy of Sleeper's /players/nfl response (~15 MB) - regenerated
 # automatically by sleeper.py's get_all_players(), refetched daily

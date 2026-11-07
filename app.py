@@ -188,11 +188,8 @@ def home():
     team_colors = get_team_colors(cursor)
     current_week = get_current_week(cursor)
 
-    # ---- Standings: placeholder only -- win/loss records aren't tracked
-    # anywhere yet (that's a real feature, not built), so this just lists
-    # real team names with the "Coming Soon" columns left blank.
-    cursor.execute("SELECT team_name FROM teams ORDER BY team_name")
-    standings_teams = [row["team_name"] for row in cursor.fetchall()]
+    cursor.execute("SELECT rank, team_name, wins, losses, pf, max_pf FROM standings s JOIN teams t on t.roster_id = s.roster_id ORDER BY rank")
+    standings_rows = cursor.fetchall()
 
     # ---- Scoreboard: latest week, same query as /scoreboard ----
     cursor.execute("SELECT MAX(week) AS latest_week FROM weekly_scores")
@@ -379,7 +376,7 @@ def home():
         faab_bars=faab_bars,
         waiver_budget=WAIVER_BUDGET,
         team_colors=team_colors,
-        standings_teams=standings_teams,
+        standings_rows=standings_rows,
     )
 
 
