@@ -211,7 +211,9 @@ Stage 3 — Polished UI:
   `get_standings()`. `rank` is stored because the bylaws two-pass sort
   can't be a plain ORDER BY. Home page table shows it with a playoff
   cutoff line under rank 6. Nav has a Bylaws link to the league's Google
-  Doc, which is the official version; `BYLAWS.md` in the repo is behind it.
+  Doc, which is the official version. `BYLAWS.md` is a copy of it
+  (synced 2026-11-07) plus a Developer Notes section the Doc doesn't
+  have. If the Doc changes, re-sync `BYLAWS.md`; the Doc wins.
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change
 indicator) considered and intentionally deferred to "someday," not v1 —

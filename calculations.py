@@ -168,7 +168,8 @@ def get_standings(league_id):
     re-derive records from weekly matchups.
 
     Sorted in two passes, because the top 6 and bottom 6 follow different
-    tiebreakers (see BYLAWS.md's Rookie Draft Order):
+    tiebreakers (see the draft order table under BYLAWS.md's Rookie
+    Supplemental Drafts):
     - All 12 teams: wins, then PF (total points scored) -- this decides
       who's in the top 6 playoff spots, so a tie straddling the 6/7 line
       is always settled by PF.
