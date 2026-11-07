@@ -26,9 +26,9 @@
 
 ### Survivor Pot Rules
 - The lowest scoring team each week is eliminated from the survivor pot
+- Last team standing wins the full $85 pot
 - If two or more teams tie for the lowest score, all of the tied teams are eliminated
 - If every remaining team ties for the lowest score, nobody is eliminated and the $85 pot is split evenly among them
-- Last team standing wins the full $85 pot
 - Eliminated teams still compete normally for all other payouts
 
 ### Payout Timeline
@@ -148,11 +148,11 @@ Each year, pick 1.13 (end of round 1) is awarded to the team with the highest st
 ---
 
 ## Tiebreaker Procedures
-- Regular season ties: broken by total points scored on the season
-- Playoff ties: broken by total points scored on the season
 - Weekly High Score ties: the tied team with the higher start/sit % that week wins the $25
 - Season High Score ties: the $60 is split evenly among the tied teams
 - Survivor Pot ties: see Survivor Pot Rules
+- Regular season ties: broken by total points scored on the season
+- Playoff ties: broken by total points scored on the season
 
 ---
 
