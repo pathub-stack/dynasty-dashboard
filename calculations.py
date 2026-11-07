@@ -9,7 +9,7 @@ from sleeper import (
     get_league_matchups,
     get_league_rosters,
     get_team_names_by_roster,
-    TEST_LEAGUE_ID,
+    LEAGUE_ID,
 )
 
 
@@ -158,6 +158,46 @@ def get_start_sit_percentages(league_id):
     results.sort(key=lambda result: result[2], reverse=True)
     return results
 
+def get_standings(league_id):
+    """Return all teams as standings, best to worst.
+
+    Each row is (roster_id, team_name, wins, losses, pf, max_pf).
+
+    Same pattern as start/sit % -- Sleeper already tracks season-to-date
+    wins, losses, PF, and Max PF on each roster's settings, so no need to
+    re-derive records from weekly matchups.
+
+    Sorted in two passes, because the top 6 and bottom 6 follow different
+    tiebreakers (see BYLAWS.md's Rookie Draft Order):
+    - All 12 teams: wins, then PF (total points scored) -- this decides
+      who's in the top 6 playoff spots, so a tie straddling the 6/7 line
+      is always settled by PF.
+    - Bottom 6 only, re-sorted: wins, then Max PF. Lower Max PF ranks
+      LOWER here, which means that team picks EARLIER in the rookie draft
+      (the draft reads non-playoff teams bottom-up). That's why both sorts
+      use reverse=True -- descending on every key, no mixed directions.
+    """
+    rosters = get_league_rosters(league_id)
+    team_names_by_roster = get_team_names_by_roster(league_id)
+
+    results = []
+    for roster in rosters:
+        settings = roster["settings"]
+        wins = settings.get("wins", 0)
+        losses = settings.get("losses", 0)
+        pf = settings.get("fpts", 0) + settings.get("fpts_decimal", 0) / 100
+        max_pf = settings.get("ppts", 0) + settings.get("ppts_decimal", 0) / 100
+
+        roster_id = roster["roster_id"]
+        team_name = team_names_by_roster[roster_id]
+        results.append((roster_id, team_name, wins, losses, pf, max_pf))
+
+    results.sort(key=lambda result: (result[2], result[4]), reverse=True)
+    top_six = results[:6]
+    bottom_six = results[6:]
+    bottom_six.sort(key=lambda result: (result[2], result[5]), reverse=True)
+    return top_six + bottom_six
+
 
 def get_season_high_scores(league_id):
     """Return every week's top score, ranked season-wide, highest first.
@@ -233,7 +273,7 @@ def get_faab_spending(league_id):
 
 
 if __name__ == "__main__":
-    eliminations, survivors = get_survivor_results(TEST_LEAGUE_ID)
+    eliminations, survivors = get_survivor_results(LEAGUE_ID)
 
     print("--- Survivor Pot ---")
     for week, roster_id, team_name, points in eliminations:
@@ -246,12 +286,12 @@ if __name__ == "__main__":
         print(f"\nSurvivor pot split between: {', '.join(survivor_names)}")
 
     print("\n--- Start/Sit % Leaderboard ---")
-    start_sit_results = get_start_sit_percentages(TEST_LEAGUE_ID)
+    start_sit_results = get_start_sit_percentages(LEAGUE_ID)
     for rank, (roster_id, team_name, pct, pf, max_pf) in enumerate(start_sit_results, start=1):
         print(f"{rank}. {team_name} - {pct:.2%} ({pf} / {max_pf})")
 
     print("\n--- Season High Score Leaderboard ---")
-    season_high_scores = get_season_high_scores(TEST_LEAGUE_ID)
+    season_high_scores = get_season_high_scores(LEAGUE_ID)
     for rank, (week, points, team_names) in enumerate(season_high_scores, start=1):
         teams_display = " & ".join(team_names)
         tie_note = " (TIE)" if len(team_names) > 1 else ""
@@ -267,6 +307,11 @@ if __name__ == "__main__":
         )
 
     print("\n--- FAAB Spending Tracker ---")
-    faab_results = get_faab_spending(TEST_LEAGUE_ID)
+    faab_results = get_faab_spending(LEAGUE_ID)
     for rank, (team_name, spent, remaining) in enumerate(faab_results, start=1):
         print(f"{rank}. {team_name} - ${spent} spent, ${remaining} remaining")
+
+    print("\n--- Standings ---")
+    standings = get_standings(LEAGUE_ID)
+    for rank, (roster_id, team_name, wins, losses, pf, max_pf) in enumerate(standings, start=1):
+        print(f"{rank}. {team_name} - {wins}-{losses} - {pf} PF - {max_pf} max PF")

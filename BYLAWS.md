@@ -93,9 +93,22 @@ With third round reversal:
 
 ### Rookie Supplemental Drafts
 - 5 rounds, linear order (non-snaking)
-- Draft order determined by previous year's standings (worst record picks first)
+- Draft order determined by previous year's results (see table below)
 - Held each August
 - Compensatory pick 1.13 awarded to team with highest start/sit %
+
+#### Rookie Draft Order
+
+| Picks | Who | Order |
+|---|---|---|
+| 1.01–1.06 | Non-playoff teams | Worst record first; ties broken by Max PF (lower Max PF picks first) |
+| 1.07–1.08 | Lost in playoff round 1 (Week 15) | Worse record first, then lower Max PF first |
+| 1.09–1.10 | Lost in semifinal (Week 16) | Worse record first, then lower Max PF first |
+| 1.11 | Lost championship | — |
+| 1.12 | Champion | — |
+| 1.13 | Highest start/sit % | Compensatory pick (see below) |
+
+The 1–12 order repeats in every round (linear draft). The compensatory pick exists in round 1 only.
 
 ### Compensatory Picks
 Each year, pick 1.13 (end of round 1) is awarded to the team with the highest start/sit % for the season.
