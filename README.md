@@ -12,7 +12,7 @@ Build a browser-accessible dashboard that tracks:
 
 1. **Weekly Scores** — full league scoreboard each week, ranked 1–12
 2. **Weekly High Score** — who wins the $25 weekly payout
-3. **Survivor Pot Tracker** — who's been eliminated, who's still alive ($5/week, $85 total pot)
+3. **Survivor Pot Tracker** — who's been eliminated, who's still alive ($85 pot)
 4. **Season High Score Leaderboard** — running tracker for the $60 end-of-season payout
 5. **Start/Sit % Leaderboard** — compensatory pick race (PF ÷ Max PF), winner gets pick 1.13 in rookie draft
 6. **FAAB Spending Tracker** — how each team is spending their $200 waiver budget
@@ -53,14 +53,14 @@ Build a browser-accessible dashboard that tracks:
 
 | Payout | Amount | Notes |
 |---|---|---|
-| 1st Place | $870 | Paid end of season |
+| 1st Place | $930 | Paid end of season |
 | 2nd Place | $300 | Paid end of season |
 | Season High Score | $60 | Paid end of season |
 | Weekly High Score | $25/week × 17 = $425 | Paid end of season |
 | Survivor Pot | $85 total | Last team standing wins, paid end of season |
 | **Total** | **$1,800** | 12 teams × $150 buy-in |
 
-**Survivor Rules:** Lowest scorer each week is eliminated. $5/week accumulates. Last team standing takes the pot. Eliminated teams still compete for all other payouts.
+**Survivor Rules:** Lowest scorer each week is eliminated, and ties for lowest eliminate every tied team. Last team standing takes the flat $85 pot (if every remaining team ties, they split it). Eliminated teams still compete for all other payouts.
 
 ---
 

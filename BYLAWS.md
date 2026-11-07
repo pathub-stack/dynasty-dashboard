@@ -16,18 +16,19 @@
 - Payment method: Venmo @patisdoingstuff5
 
 ### Payout Structure
-- 1st Place: $870
+- 1st Place: $930
 - 2nd Place: $300
 - Season High Score: $60
 - Weekly High Score: $25/week × 17 weeks = $425
-- Survivor Pot: $5/week × 17 weeks = $85 (last team standing wins)
+- Survivor Pot: $85 (last team standing wins)
 - Season High Score, Weekly High Score & Survivor Pot will all be paid out at the end of the year with the championship pay-out.
 - Total: $1,800
 
 ### Survivor Pot Rules
 - The lowest scoring team each week is eliminated from the survivor pot
-- $5 is added to the pot each week
-- Last team standing at the end of the regular season wins the full $85 pot
+- If two or more teams tie for the lowest score, all of the tied teams are eliminated
+- If every remaining team ties for the lowest score, nobody is eliminated and the $85 pot is split evenly among them
+- Last team standing wins the full $85 pot
 - Eliminated teams still compete normally for all other payouts
 
 ### Payout Timeline
@@ -149,6 +150,9 @@ Each year, pick 1.13 (end of round 1) is awarded to the team with the highest st
 ## Tiebreaker Procedures
 - Regular season ties: broken by total points scored on the season
 - Playoff ties: broken by total points scored on the season
+- Weekly High Score ties: the tied team with the higher start/sit % that week wins the $25
+- Season High Score ties: the $60 is split evenly among the tied teams
+- Survivor Pot ties: see Survivor Pot Rules
 
 ---
 
@@ -224,7 +228,9 @@ the bylaws text above.
 - **Trade deadline:** Week 14
 - **Start/sit %:** PF ÷ Max PF, using Sleeper's season-to-date totals on each roster
 - **Weekly high score:** single highest scorer each week wins $25
-- **Weekly high score ties:** not decided in the bylaws yet. The dashboard shows every tied team rather than picking one
+- **Weekly high score ties:** higher start/sit % that week wins (decided 2026-11-07). NOT built into the dashboard yet: it still shows every tied team. Needs a per-week start/sit %, but Sleeper only gives season-to-date PF/Max PF, so it would come from the difference between two weekly `start_sit` snapshots
+- **Season high score ties:** $60 split evenly (decided 2026-11-07). The dashboard already shows "(tied)"
+- **Payouts total:** $930 + $300 + $60 + $425 + $85 = $1,800. 1st place was $870 until 2026-11-07, when the old payouts only added up to $1,740 and the unassigned $60 went to 1st place
 - **Season high score:** highest single-week score by any team across the season
 - **FAAB:** each team starts with $200, remaining budget tracked via the transactions endpoint
 - **IR slots:** 1
