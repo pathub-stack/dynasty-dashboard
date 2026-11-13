@@ -1728,4 +1728,132 @@ overwriting the file would break the next deploy. Add new packages to
 `requirements.txt` by hand.
 
 ---
-*Last updated: 2026-11-07*
+
+## Session 2026-11-12: Draft pick ownership grid (I wrote all of it)
+
+### What we built
+
+Step 1 of draft pick tracking: who currently owns each 2027 rookie pick.
+Only the data part, no database or website yet.
+
+- `sleeper.py`: `get_traded_picks(league_id)`, a raw fetch of
+  `/league/{id}/traded_picks` through `_get_json()`
+- `calculations.py`: `get_pick_ownership(league_id, season)`, returns 60
+  tuples of `(season, round, original_roster_id, owner_roster_id)`
+- A `--- 2027 Pick Ownership ---` section in `calculations.py`'s
+  `__main__` block
+
+Matched the expected live numbers exactly: 60 picks, 6 traded, roster 1
+owns 7, roster 2 owns 6, rosters 5/9/11 own 4, everyone else 5.
+
+Also decided how the 1.13 compensatory pick will look on the board
+(13th row in round 1 with a "COMP" pill, start/sit leader shown as
+"projected"). Logged in Obsidian under Step 3.
+
+### New concepts learned
+
+✅ **Write it in English first, then translate.** I could read code fine
+but froze on a blank page. What worked: write every step as a comment
+first, then turn ONE comment into code, run it, print, check, repeat. Same
+as building a big SQL query one join at a time.
+
+✅ **The whole function is a CROSS JOIN + LEFT JOIN/COALESCE.**
+- Default grid = every round x every roster (nested loops = CROSS JOIN)
+- Trades overwrite the owner for the picks that moved (= COALESCE(trade owner, original))
+
+✅ **A dict with a tuple key is a table with a composite primary key.**
+`grid[(round, roster_id)] = owner`. Writing to a key that already exists
+REPLACES the value, it doesn't add a row. That's why the grid stayed at 60
+after the trades. Like `UPDATE ... WHERE pk = ...`.
+
+✅ **`=` puts the right side INTO the left side.** Like `SET target = source`.
+I had it backwards once and wrote into the pick instead of the grid.
+
+✅ **A function call or lookup on its own line does nothing useful.**
+`get_league_rosters(league_id)` alone runs and throws the result away.
+Needs `rosters = ...` to catch it. Same as a SELECT with no INTO. I did
+this three separate times (rosters, `roster["roster_id"]`, and calling
+`get_pick_ownership()` in `__main__` without looping over what it returned).
+
+✅ **`print(my_function)` vs `print(my_function())`.** No parentheses =
+the function itself (`<function ... at 0x...>`), not its result. Like
+`sp_helptext` vs `EXEC`.
+
+✅ **`'2027' == 2027` is False in Python.** No error, no automatic
+conversion like SQL Server does. The API sends season as a string, so I
+convert the API side: `int(pick["season"]) == season`. Never hardcode the
+year, that's what the `season` parameter is for.
+
+✅ **`.items()` loops over a dict's keys AND values together.**
+`for key, owner in grid.items():`
+
+✅ **`append()` takes exactly ONE thing.** For a row, that one thing is a
+tuple, so it needs double parentheses: `picks.append((a, b, c, d))`.
+Like `INSERT ... VALUES (a, b, c, d)` being one row.
+
+✅ **Unpacking goes by position, not name.** The `for` line needs exactly
+as many names as the tuple has values, in the same order. Swap two names
+and Python won't complain, the data will just be silently wrong.
+
+✅ **Reading a traceback:** start at the bottom. Last line = what went
+wrong. The bottom `File ... line N` = where to fix it. Lines above that
+are just the chain of calls that got there.
+
+✅ **Test one function without running the whole file:**
+`python -c "from calculations import get_pick_ownership, LEAGUE_ID; get_pick_ownership(LEAGUE_ID, 2027)"`.
+Importing skips the `if __name__ == "__main__":` block.
+
+✅ **Label debug prints** (`print("grid size:", len(grid))`) so they're
+findable in a wall of output. Then delete them once the function returns
+real data.
+
+### Mistakes & fixes
+
+- **Put `get_pick_ownership` in `sleeper.py`.** That file is only for raw
+  API fetches. Moved it to `calculations.py`, then had to delete the copy
+  I'd left behind.
+- **Forgot the `season` parameter** at first.
+- **`IndentationError: unexpected indent`.** Indented the `grid[...]` line
+  under a line that didn't end in `:`. Only indent further after a colon.
+- **Filter compared the wrong things.** First `season == int('2027')`
+  (always True, let all 14 trades through, including 2026 and 2028), then
+  `pick["season"] == int('2027')` (string vs int, always False, 0 trades).
+  The count of `traded:` lines is what caught both.
+- **Backwards assignment**, then a bare tuple on the left side with no
+  `grid[...]` around it. That one never errored because the broken filter
+  meant the line never ran. "No error" doesn't mean "correct."
+- **`append()` with 0 args, then 4 args.** Needed 1 tuple.
+- **Dropped `original` from the `for` line**, got "too many values to
+  unpack (expected 3)".
+- **Edits not saved**, several times again. Then once it WAS saved but
+  the edit wasn't in the file. Check the tab for the dot, turn on Auto Save.
+
+### Questions / still confused about ❓
+
+- ❓ Getting started on a blank function is still the hard part. The
+  comment skeleton helped a lot, try writing my own skeleton next time.
+- ❓ Catching return values in a variable isn't automatic yet (3 misses
+  this session).
+
+### Code snippets worth remembering
+
+```python
+grid = {}                                                   # empty "table", key = (round, roster_id)
+for round_number in range(1, draft_rounds + 1):             # 1..5 (range stops BEFORE the end number)
+    for roster in rosters:                                  # inner loop runs fully for each round = CROSS JOIN
+        roster_id = roster["roster_id"]                     # catch the value in a variable
+        grid[(round_number, roster_id)] = roster_id         # everyone owns their own pick to start
+
+for pick in traded_picks:
+    if int(pick["season"]) == season:                       # WHERE season = 2027 (convert the string side)
+        grid[(pick["round"], pick["roster_id"])] = pick["owner_id"]   # overwrite = UPDATE owner
+
+picks = []
+for key, owner in grid.items():                             # key and value together
+    round_number, original_roster_id = key                  # split the (round, roster) tuple
+    picks.append((season, round_number, original_roster_id, owner))  # double () = one row
+return picks                                                # lined up with the for, not inside it
+```
+
+---
+*Last updated: 2026-11-12*

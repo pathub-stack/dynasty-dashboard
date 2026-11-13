@@ -120,6 +120,7 @@ def get_player_names():
 
 
 def get_team_names_by_roster(league_id):
+
     """Return a dict mapping roster_id -> team name, joined across users + rosters.
 
     Every other calculation (scores, survivor, start/sit %) needs to turn a
@@ -142,6 +143,12 @@ def get_team_names_by_roster(league_id):
 
     return team_names_by_roster
 
+
+def get_traded_picks(league_id):
+    """Returns all traded draft picks"""
+
+    url = f"{BASE_URL}/league/{league_id}/traded_picks"
+    return _get_json(url)
 
 if __name__ == "__main__":
     week = 1

@@ -9,6 +9,7 @@ from sleeper import (
     get_league_matchups,
     get_league_rosters,
     get_team_names_by_roster,
+    get_traded_picks,
     LEAGUE_ID,
 )
 
@@ -199,7 +200,6 @@ def get_standings(league_id):
     bottom_six.sort(key=lambda result: (result[2], result[5]), reverse=True)
     return top_six + bottom_six
 
-
 def get_season_high_scores(league_id):
     """Return every week's top score, ranked season-wide, highest first.
 
@@ -272,6 +272,45 @@ def get_faab_spending(league_id):
     results.sort(key=lambda result: result[1], reverse=True)
     return results
 
+def get_pick_ownership(league_id, season):
+    """Return (season, round, original_roster_id, owner_roster_id) for every pick in one draft."""
+
+     # 1. Get the list of rosters (hint: a function that already exists in sleeper.py)
+
+    rosters = get_league_rosters(league_id)
+
+    # 2. Get the number of draft rounds from the league info
+    #    (it lives at league_info["settings"]["draft_rounds"])
+
+    league_info = get_league_info(league_id)
+    draft_rounds = league_info["settings"]["draft_rounds"]
+
+    # 3. Make an empty dict for the grid
+    grid = {} 
+
+    # 4. Loop over every round, and inside that, loop over every roster.
+    #    Put each pick in the grid: key = (round, roster_id), value = roster_id
+    #    (everyone owns their own picks to start)
+    for round_number in range(1, draft_rounds + 1):
+        for roster in rosters:
+            roster_id = roster["roster_id"]
+            grid[(round_number, roster_id)] = roster_id
+    # 5. Get the traded picks
+    traded_picks = get_traded_picks(league_id)
+
+    # 6. Loop over the traded picks. Skip any whose season isn't ours
+    #    (remember: '2027' vs 2027). For the rest, overwrite the grid
+    #    entry with the new owner_id.
+    for pick in traded_picks:
+        if int(pick["season"]) == season:
+            grid[(pick["round"], pick["roster_id"])] = pick["owner_id"]
+
+    # 7. Build the list of tuples from the grid and return it
+    picks = []
+    for key, owner in grid.items():
+        round_number, original_roster_id = key 
+        picks.append((season, round_number, original_roster_id, owner))
+    return picks
 
 if __name__ == "__main__":
     eliminations, survivors = get_survivor_results(LEAGUE_ID)
@@ -316,3 +355,8 @@ if __name__ == "__main__":
     standings = get_standings(LEAGUE_ID)
     for rank, (roster_id, team_name, wins, losses, pf, max_pf) in enumerate(standings, start=1):
         print(f"{rank}. {team_name} - {wins}-{losses} - {pf} PF - {max_pf} max PF")
+
+    print("\n--- 2027 Pick Ownership ---")
+    for season, round_number, original, owner in get_pick_ownership(LEAGUE_ID, 2027):
+        print(round_number, original, owner)
+    
