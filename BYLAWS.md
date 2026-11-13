@@ -4,7 +4,7 @@
 > This file is a copy of the official bylaws
 > [Google Doc](https://docs.google.com/document/d/1KgUXgfbAu_HS8g-gyoAOuM61vUQfypMwJbk64DlRxY8/edit),
 > which is what the website's Bylaws link opens. If the two ever
-> disagree, the Google Doc wins. Synced from the Doc on 2026-11-07.
+> disagree, the Google Doc wins. Synced from the Doc on 2026-11-12.
 
 ---
 
@@ -68,6 +68,7 @@ This balances the draft by giving the pick 1 owner a back-to-back at the turn of
 - Playoff teams seeded in order of playoff results. (League winner gets 1.12 for example)
 - Non-playoff teams are sorted in order of regular season W-L record. Ties goes in favor of the team with less Max Points For (The team with the lower point total for gets the higher draft pick)
 - Compensatory pick 1.13 awarded to the team with the highest start/sit % for the season (see Compensatory Picks)
+- All rounds follow the same order as round 1. Round 2-5 do not include the compensatory pick.
 
 | Picks | Who | Order |
 | :-: | :-: | :-: |
@@ -78,14 +79,19 @@ This balances the draft by giving the pick 1 owner a back-to-back at the turn of
 | 1.12 | Champion | |
 | 1.13 | Start/sit % winner | See compensatory picks below |
 
+- The consolation bracket does not impact draft order, only the main playoff bracket impacts playoff order.
+- In the event of a tie record & max PF, the tie goes to the team with the higher total PF (the higher PF gets the earlier pick). Logic here is to not award the player not setting optimal lineups every week.
+
 ### Compensatory Picks
-Each year, pick 1.13 (end of round 1) is awarded to the team with the highest start/sit percentage for the season.
+Each year, pick 1.13 (end of round 1) is awarded to the team with the highest start/sit percentage for the regular season.
 
 - Start/sit % = PF ÷ Max PF
 - PF = actual points scored
 - Max PF = maximum possible points if the perfect lineup had been set every week
 - Trackable on the matchup tab each week in Sleeper or on the [League Website](https://dynasty-dashboard-ijio.onrender.com/)
 - Commissioner manually awards the pick before the rookie draft
+- Pick is manually added by the commissioner during the rookie draft
+- The pick can be traded during the rookie draft. The commissioner needs to be alerted of the trade to ensure the correct manager gets awarded the pick.
 
 ---
 
