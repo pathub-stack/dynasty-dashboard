@@ -22,6 +22,8 @@ from calculations import (
     get_start_sit_percentages,
     get_effective_current_week,
     get_standings,
+    get_pick_ownership,
+    get_target_draft_season,
 )
 
 
@@ -139,6 +141,16 @@ def create_tables():
             rank INTEGER,
             PRIMARY KEY (roster_id),
             FOREIGN KEY (roster_id) REFERENCES teams(roster_id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS draft_picks (
+        original_roster_id INTEGER,
+        owner_roster_id INTEGER,
+        season INTEGER,
+        round INTEGER,
+        PRIMARY KEY (season, round, original_roster_id)
         )
     """)
 
@@ -400,6 +412,7 @@ def insert_faab_transactions(league_id):
         if connection:
             connection.close()
 
+
 def insert_standings(league_id):
     """
     Write each team's current record, PF, max PF and bylaws rank into standings
@@ -424,6 +437,38 @@ def insert_standings(league_id):
         connection.commit()
     except requests.exceptions.RequestException:
         logging.error("insert_standings: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
+
+
+def insert_draft_picks(league_id):
+    """
+    Write draft pick ownership for target draft season
+    """
+
+    connection = None
+    try:
+        target_season = get_target_draft_season(league_id)
+        draft_picks = get_pick_ownership(league_id, target_season)
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        for season, round, original_roster_id, owner_roster_id in draft_picks:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO draft_picks (season, round, original_roster_id, owner_roster_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (season, round, original_roster_id, owner_roster_id)
+            )
+
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_draft_picks: Sleeper API call failed, skipping this refresh")
         if connection:
             connection.rollback()
     finally:
@@ -491,6 +536,7 @@ def refresh_all_data(league_id=LEAGUE_ID):
     insert_faab_transactions(league_id)
     insert_survivor_status(league_id)
     insert_standings(league_id)
+    insert_draft_picks(league_id)
 
 
 if __name__ == "__main__":
@@ -577,6 +623,24 @@ if __name__ == "__main__":
         FROM survivor_status
         JOIN teams ON teams.roster_id = survivor_status.roster_id
         ORDER BY survivor_status.week_eliminated IS NULL, survivor_status.week_eliminated
+    """)
+    for row in cursor.fetchall():
+        print(row)
+    connection.close()
+
+    insert_draft_picks(LEAGUE_ID)
+    print("Draft picks inserted")
+
+    # Sanity check -- how many picks each team currently holds. Should
+    # total 60 (12 teams x 5 rounds); anyone above 5 traded for extras.
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT teams.team_name, draft_picks.season, COUNT(*) AS picks_owned
+        FROM draft_picks
+        JOIN teams ON teams.roster_id = draft_picks.owner_roster_id
+        GROUP BY teams.team_name, draft_picks.season
+        ORDER BY picks_owned DESC
     """)
     for row in cursor.fetchall():
         print(row)

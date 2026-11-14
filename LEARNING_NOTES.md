@@ -1855,6 +1855,104 @@ for key, owner in grid.items():                             # key and value toge
 return picks                                                # lined up with the for, not inside it
 ```
 
+## Session 2026-11-14: Draft picks Step 0 + Step 3a (I wrote it)
+
+### What we built
+
+Picked "Route A" for the rest of draft pick tracking: Step 0, then an
+ownership-only `/draft-picks` page (Step 3), then the full 1.01-1.13
+order (Step 2) later.
+
+- `sleeper.py`: `get_draft(draft_id)`, raw fetch of `/draft/{draft_id}`
+- `calculations.py`: `get_target_draft_season(league_id)`. If the
+  league's main draft is `complete`, track next season, otherwise this
+  one. Prints 2027 today. Claude faked `pre_draft`/`drafting`/`paused`
+  in a scratch test and all three return 2026.
+- `database.py`: new `draft_picks` table + `insert_draft_picks()`,
+  hooked into `refresh_all_data()` so the hourly refresh picks up trades.
+  Claude did the last cleanup (loop line + `__main__` sanity check).
+  Ran against a scratch DB: 60 picks, 6 traded, 7/6/4/5 counts match.
+- Committed + pushed Step 0. **3a (database.py) is NOT committed yet.**
+
+### New concepts learned
+
+✅ **Parameter vs constant (`league_id` vs `LEAGUE_ID`).** Lowercase
+`league_id` is the function's parameter, a placeholder that only exists
+inside the function, like `@league_id` in a stored proc definition.
+ALL CAPS `LEAGUE_ID` is a constant set once in `sleeper.py`; passing it
+in the `__main__` block is the `EXEC ... @league_id = '1364...'`. Caps
+are just a "don't change this" signal to humans, Python doesn't enforce
+it. Keeping them separate is what lets the same functions run against
+`TEST_LEAGUE_ID`, or next year's new league id, with zero changes.
+
+✅ **Primary key = what identifies the thing, not what describes it.**
+A pick is "roster 4's round 2 pick in the 2027 draft" =
+`(season, round, original_roster_id)`. NOT `owner_roster_id`: that's
+the one column that changes on a trade, so putting it in the key would
+make a trade look like a brand new pick (duplicate rows).
+
+✅ **Single-column PK + INSERT OR REPLACE = silent data loss.** If
+`original_roster_id` alone were the key, rounds 2-5 would each REPLACE
+the row before, leaving 12 rows instead of 60. No error at all.
+
+✅ **`else` beats listing every case.** Wrote 3 separate `if`s for the
+non-complete statuses, noticed they all returned the same thing, and
+collapsed them into `else`. Bonus: `else` also covers statuses Sleeper
+might add later.
+
+✅ **Arguments match parameters by position.**
+`get_pick_ownership(target_season)` put 2027 into the `league_id` slot.
+Needed `get_pick_ownership(league_id, target_season)`, same order as the
+`def` line.
+
+### Mistakes & fixes
+
+- `get_draft(draft_id)` without catching the result (my ❓ from last
+  session again). Fixed: `current_draft = get_draft(draft_id)`.
+- `else` branch set `target_season` but returned `target_draft`. Would
+  have crashed with `UnboundLocalError`, but **only next summer**, because
+  today's draft is `complete` so the `else` never runs. Testing against
+  live data only tests the paths today's data reaches.
+- First guess at the PK was `roster_id` alone (see above).
+- `CREATE TABLE` named the column `round_number` but the PK said `round`
+  → `no such column: round`.
+- Copy-pasting `insert_standings()` left a bunch of standings stuff
+  behind: `INTO standings`, 6 `?`s for 4 values, an unused `enumerate`
+  rank, and tuple names in the wrong order. **When I copy a function,
+  go line by line and ask "is this still true for the new thing?"**
+- Imported `get_draft` into `database.py` instead of the function I
+  actually needed (`get_target_draft_season`).
+- Text editor squashed the double blank lines between functions in
+  `sleeper.py`. PEP 8 wants 2 between top-level functions; keeping them
+  keeps the git diff focused on the real change.
+
+### Questions / still confused about ❓
+
+- ❓ Still forgetting to catch return values sometimes (once today).
+- ❓ Copy-paste-then-edit is fast but I miss things. Might be worth
+  writing from the comment skeleton instead of copying a whole function.
+- ❓ `insert_standings()` is in `refresh_all_data()` but NOT in
+  `database.py`'s `__main__` block, so `python database.py` (the
+  Pre-Release rebuild step) doesn't fill `standings` until the hourly
+  refresh runs. Found 2026-11-14, not fixed yet.
+
+### Code snippets worth remembering
+
+```python
+# Step 0: which draft is "next"? (else catches pre_draft, drafting, paused, anything new)
+season = int(league_info["season"])                  # API gives '2026', convert once up top
+current_draft = get_draft(draft_id)                  # catch the return value!
+if current_draft["status"] == "complete":            # this year's draft already happened
+    return season + 1                                # so show next year's
+else:
+    return season                                    # still upcoming or in progress
+```
+
+```sql
+-- Composite key: each column repeats, the combination is unique
+PRIMARY KEY (season, round, original_roster_id)      -- owner left OUT, it changes on trades
+```
+
 ---
 
 # Socratic Tutor Sessions 🧠
