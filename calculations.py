@@ -10,6 +10,7 @@ from sleeper import (
     get_league_rosters,
     get_team_names_by_roster,
     get_traded_picks,
+    get_draft,
     LEAGUE_ID,
 )
 
@@ -159,6 +160,7 @@ def get_start_sit_percentages(league_id):
     results.sort(key=lambda result: result[2], reverse=True)
     return results
 
+
 def get_standings(league_id):
     """Return all teams as standings, best to worst.
 
@@ -199,6 +201,7 @@ def get_standings(league_id):
     bottom_six = results[6:]
     bottom_six.sort(key=lambda result: (result[2], result[5]), reverse=True)
     return top_six + bottom_six
+
 
 def get_season_high_scores(league_id):
     """Return every week's top score, ranked season-wide, highest first.
@@ -272,10 +275,38 @@ def get_faab_spending(league_id):
     results.sort(key=lambda result: result[1], reverse=True)
     return results
 
+
+def get_target_draft_season(league_id):
+    """Return the season of the next rookie draft to show on the board."""
+
+    # 1. Get the league info (function already exists)
+    league_info = get_league_info(league_id)
+
+    # 2. Pull out two things from it: the season, and the main draft's id
+    #    (keys: "season" and "draft_id")
+    season = int(league_info["season"])
+    draft_id = league_info["draft_id"]
+
+    # 3. Fetch that draft with your new get_draft()
+    current_draft = get_draft(draft_id)
+
+    # 4. If the draft's "status" is "complete", the target is next season.
+    #    Otherwise it's this season.
+    status = current_draft["status"]
+
+    if status == "complete":
+        target_draft = season + 1 
+        return target_draft
+
+    else:
+        target_draft = season
+        return target_draft
+
+
 def get_pick_ownership(league_id, season):
     """Return (season, round, original_roster_id, owner_roster_id) for every pick in one draft."""
 
-     # 1. Get the list of rosters (hint: a function that already exists in sleeper.py)
+    # 1. Get the list of rosters (hint: a function that already exists in sleeper.py)
 
     rosters = get_league_rosters(league_id)
 
@@ -359,4 +390,7 @@ if __name__ == "__main__":
     print("\n--- 2027 Pick Ownership ---")
     for season, round_number, original, owner in get_pick_ownership(LEAGUE_ID, 2027):
         print(round_number, original, owner)
+
+    print("\n--- Upcoming Draft ---")
+    print(get_target_draft_season(LEAGUE_ID))
     

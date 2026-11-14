@@ -150,6 +150,13 @@ def get_traded_picks(league_id):
     url = f"{BASE_URL}/league/{league_id}/traded_picks"
     return _get_json(url)
 
+
+def get_draft(draft_id):
+    """return draft's details (status, season, settings)"""
+    url = f"{BASE_URL}/draft/{draft_id}"
+    return _get_json(url)
+
+
 if __name__ == "__main__":
     week = 1
     team_names_by_roster = get_team_names_by_roster(TEST_LEAGUE_ID)
@@ -165,3 +172,4 @@ if __name__ == "__main__":
     print(f"--- Week {week} Scores ---")
     for rank, (team_name, points) in enumerate(scores, start=1):
         print(f"{rank}. {team_name} - {points}")
+
