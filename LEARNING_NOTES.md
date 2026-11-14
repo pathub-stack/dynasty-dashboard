@@ -1856,4 +1856,109 @@ return picks                                                # lined up with the 
 ```
 
 ---
-*Last updated: 2026-11-12*
+
+# Socratic Tutor Sessions 🧠
+
+> Quiz sessions, separate from the build sessions above. Claude asks me
+> questions about concepts from my own code instead of explaining things,
+> and I have to reason out the answer. Levels are 0-5 (0 unaware, 1 heard
+> of it, 2 can follow along, 3 can do with help, 4 can do independently,
+> 5 can teach it). Each entry ends with a saved-state block I can paste
+> back in ("resume from: ...") to pick up where I left off.
+
+## Tutor Session 2026-11-14: Python basics from calculations.py
+
+### What we covered
+
+- Diagnostic (4 questions): `.get()` on a missing key, tracing the
+  survivor `alive_scores` comprehension, the two-key standings sort,
+  and the `if max_pf else 0` check in start/sit %. Got all four results
+  right, but couldn't always explain *why*.
+- Spent most of the session on truthiness, then on `.get()`.
+- Wrote and ran my own expression that safely handles a missing key AND
+  a `None` value. Took 4 tries.
+
+### New concepts learned
+
+- ✅ **Truthiness.** A bare `if x:` doesn't check whether `x` exists, or
+  is a number, or is not None. It checks whether `x` is "falsy." The
+  falsy list is short: `None`, `False`, `0`, `0.0`, and empty stuff
+  (`""`, `[]`, `{}`, `set()`). Everything else is truthy. SQL has
+  nothing like this; `WHERE max_pf` alone isn't valid, so I'd have to
+  write `CASE WHEN COALESCE(max_pf, 0) <> 0`.
+- ✅ **`"0"` (the string) is truthy.** It's a non-empty string. It only
+  *looks* like zero. And `1080.0 / "0"` is a `TypeError`, not a
+  divide-by-zero.
+- ✅ **`.get()` is NOT quite COALESCE** (updating my 2026-08-08 note).
+  `.get(key, 0)` only uses the 0 when the **key is missing**. If the key
+  is there with a value of `None`, I get `None` back. COALESCE replaces
+  NULL *values*, and SQL has no idea of a "missing column."
+- ✅ **A quoted string is not a lookup.** `if "fpts"` is always true
+  because it's just a non-empty string sitting there. To check the
+  value, I have to actually look it up: `if settings.get("fpts")`.
+- ✅ **Dead code.** In `settings.get("fpts", 0) if settings.get("fpts") else 0`
+  the `, 0` in the first `.get` never gets used. Getting to that branch
+  means the value was truthy, so the key exists, so the default is never
+  needed.
+
+### Mistakes & fixes
+
+- Kept describing `if max_pf` as checking whether a value is "present."
+  It's not. `{"fpts": 0}` has the key present, but `0` is falsy, so it
+  goes to `else`. Still got this wrong at the very end of the session.
+- First try at the exercise: `if "ftps"` checked a string literal
+  instead of the dict, so it was always true and `None` leaked through.
+- Second and third tries: misspelled the key as `"ftps"` instead of
+  `"fpts"`, so every case returned 0. Adding `[0]` just turned it into
+  `"f"`. **Read key names character by character.**
+- When asked *why* the default was dead code, I kept saying "because
+  `"fpts"` is truthy." The actual reason: the *value* is truthy, so the
+  key must exist.
+
+### Questions / still confused about ❓
+
+- ❓ `if x` tests the **value**, not existence. `0`, `None`, `""` all
+  fail. This is the #1 thing to drill next session.
+- ❓ Haven't been tested on sets yet beyond using `in`.
+- ❓ Got the standings sort order right but didn't explain why. Need to
+  explain tuple keys + `reverse=True` out loud.
+
+### Code snippets worth remembering
+
+```python
+# Safe "missing key OR None -> 0" (the version I wrote and ran)
+pf = settings.get("fpts") if settings.get("fpts") else 0   # truthy value? use it. otherwise 0
+
+# Same thing, shorter: `or` returns the first truthy thing it finds
+pf = settings.get("fpts") or 0                             # None, 0, missing key -> all become 0
+
+bool(0)       # False  <- zero is falsy even though the key "exists"
+bool("0")     # True   <- non-empty string, truthy
+bool(None)    # False
+```
+
+### Saved state (paste after "resume from:" to continue)
+
+```
+Topic: Python (dynasty-dashboard edition)     overall: ████░░░░░░ 40%
+-----------------------------------------------------------------
+dicts and .get()          [██████░░░░]  3/5
+tuples and unpacking      [████░░░░░░]  2/5
+list comprehensions       [████░░░░░░]  2/5
+sets                      [██░░░░░░░░]  1/5
+truthiness / if-else expr [████░░░░░░]  2/5  <- revisit first
+sorting with key/lambda   [████░░░░░░]  2/5
+-----------------------------------------------------------------
+Source material: calculations.py (get_survivor_results,
+get_start_sit_percentages, get_standings).
+Misconception: thinks `if x` tests presence/existence; failed
+{"fpts": 0} review (said truthy). Also confused string literal
+"fpts" with the looked-up value.
+Covered: falsy list, "0" string truthy, .get default = missing key
+only (vs COALESCE = NULL value), dead default in guarded .get.
+Not yet: exact print format of list of tuples, sort tuple-key "why",
+sets beyond `in`, the `x or 0` idiom (shown in notes, not tested).
+```
+
+---
+*Last updated: 2026-11-14*
