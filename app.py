@@ -119,7 +119,7 @@ def get_db_connection():
 
 @app.context_processor
 def inject_current_week():
-    """Make current_week available in every template automatically --
+    """Make current_week and draft_season available in every template automatically --
     same idea as a value every view has access to without each route
     having to fetch and pass it in individually. Runs on every request
     with its own connection, independent of whatever a specific route's
@@ -128,8 +128,15 @@ def inject_current_week():
     connection = get_db_connection()
     cursor = connection.cursor()
     current_week = get_current_week(cursor)
+
+    # Season for the nav's "Draft Picks" link label, so it rolls over to
+    # the next year on its own instead of a hardcoded "2027". [0] pulls
+    # the one value out of the one-row result. MAX() on an empty table
+    # returns a row holding None (not zero rows), so this never crashes.
+    draft_season = cursor.execute("SELECT MAX(season) FROM draft_picks").fetchone()[0]
+
     connection.close()
-    return {"current_week": current_week}
+    return {"current_week": current_week, "draft_season": draft_season}
 
 
 @app.after_request
@@ -458,17 +465,47 @@ def history():
 
 @app.route("/draft-picks")
 def draft_picks():
-    """Placeholder page for draft pick tracking.
+    """Who owns every pick in the upcoming rookie draft, grouped by round.
 
-    "2027" is hardcoded for now rather than computed from the current NFL
-    season. The real feature (tracking completed rookie drafts plus who
-    holds which future picks) needs its own session to scope properly;
-    this route just exists so the nav link has somewhere real to go.
+    Reads the draft_picks table (filled by database.py's
+    insert_draft_picks() on every refresh), never the Sleeper API. Picks
+    are listed by original team, not draft slot: the real 1.01-1.12 order
+    is Step 2 of the draft pick roadmap.
     """
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    # teams is joined TWICE (owner + orig aliases) to get both names.
+    # MAX(season) instead of a hardcoded year: after next summer's draft,
+    # the table holds two seasons and this keeps showing the newest one.
+    # traded_pick compares roster_ids (keys), not team names (labels that
+    # owners rename), and comes back as 1/0 since SQLite has no booleans.
+    cursor.execute("""
+    SELECT season, 
+    round, 
+    owner.team_name as owner_team_name,
+    orig.team_name as original_team_name,
+    dp.original_roster_id != dp.owner_roster_id as traded_pick
+    FROM draft_picks dp 
+    JOIN teams owner on owner.roster_id = dp.owner_roster_id
+    JOIN teams orig on orig.roster_id = dp.original_roster_id  
+    WHERE season = (SELECT MAX(season) from draft_picks)
+    ORDER BY round, dp.original_roster_id
+    """)
+
+    # 3. fetchall() into a variable (catch the return value!), close the connection
+    picks = cursor.fetchall()
+    connection.close()
+
+    # Every row has the same season (the WHERE above), so read it off the
+    # first one. An empty list is falsy, so an empty table gives None
+    # instead of crashing on picks[0] (IndexError).
+    season = picks[0]["season"] if picks else None
+
     return render_template(
-        "coming_soon.html",
-        title="2027 Draft Picks",
-        message="Draft pick tracking isn't built yet. Logged as a future idea in the project roadmap.",
+        "draft_picks.html",
+        picks=picks,
+        season=season
     )
 
 

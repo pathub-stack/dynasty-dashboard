@@ -596,6 +596,29 @@ h1 {
     color: var(--color-danger);
 }
 
+/* ---- Draft picks page ---- */
+
+.draft-round {
+    margin-bottom: 2rem;
+}
+
+/* Gold, not green or red: a traded pick isn't good or bad, just notable.
+   Same pill shape as survivor's status pills. */
+.status-traded {
+    background: rgba(210, 153, 34, 0.12);
+    color: var(--color-gold);
+    margin-left: 0.5rem;
+}
+
+/* Original team is secondary info, so it's muted unless the pick moved */
+.draft-original {
+    color: var(--color-text-muted);
+}
+
+.leaderboard tr.is-traded .draft-original {
+    color: var(--color-text);
+}
+
 /* ---- Admin login form ---- */
 
 .admin-login-form {

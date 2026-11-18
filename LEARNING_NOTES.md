@@ -1953,6 +1953,100 @@ else:
 PRIMARY KEY (season, round, original_roster_id)      -- owner left OUT, it changes on trades
 ```
 
+## Session 2026-11-17: Draft picks page is live (Step 3b/3c/3d)
+
+### What we built
+
+- **3b:** `/draft-picks` route in `app.py`. I wrote the query: `draft_picks`
+  joined to `teams` twice, newest season only, plus a `traded_pick` flag.
+- **3c:** `templates/draft_picks.html` (Claude wrote this one). One table
+  per round, gold TRADED pill on traded picks, falls back to "Draft Picks"
+  with no year if the table is empty. A few CSS rules in `style.css`.
+- **3d:** nav link says "2027 Draft Picks" from real data now, not
+  hardcoded, and isn't greyed out as coming soon anymore. Claude added
+  `draft_season` to the context processor (the thing that feeds
+  `current_week` to every page).
+- Claude finished the last `app.py` bits (the `season =` line + docstring)
+  when I wanted to wrap up.
+- Set up **DB Browser for SQLite** so I can explore `dynasty.db` like a
+  Snowflake worksheet. 60 rows, 8 traded (2 new trades since Nov 12).
+
+### New concepts learned
+
+✅ **Same table joined twice = aliases.** `JOIN teams owner ON ...` and
+`JOIN teams orig ON ...`. Exactly like SQL Server. The alias before the
+dot picks WHICH copy of `teams`, the real column name goes after it
+(`owner.team_name`, not `owner.name`).
+
+✅ **SQLite is loose, SQL Server is strict.** `WHERE (SELECT MAX(season) ...)`
+(missing `season =`) is really `WHERE 2027`, and SQLite treats any nonzero
+number as true, so every row passed. SQL Server would've errored. Same
+idea as truthiness in Python.
+
+✅ **Compare keys, not labels.** `traded_pick` compares roster_ids, not
+team names, because owners rename teams and ids never change. SQLite
+gives back `1`/`0` (no real booleans), which works fine in a Jinja `if`.
+
+✅ **An error stops everything after it.** My `print()` never ran because
+`cursor.execute()` blew up first. Like a proc with no TRY/CATCH.
+
+✅ **`sqlite3.Row` prints as `<sqlite3.Row object at 0x...>`.** It acts like
+a dict for templates but doesn't print like one. `[dict(row) for row in picks]`
+to actually see the values.
+
+✅ **Jinja `groupby` isn't SQL `GROUP BY`.** SQL collapses each group into
+one row. Jinja's keeps every row and just buckets them (like report group
+headers). `for round_number, round_picks in picks|groupby("round")`.
+
+✅ **`season=season` doesn't create anything.** Left side = the name the
+template sees. Right side = a variable that has to already exist in the
+function, like `@season = @season` needs a DECLARE first.
+
+✅ **Test SQL by itself first.** DB Browser for SQLite: File > Open Database
+**Read Only** (so I can't accidentally lock the file and break the hourly
+refresh). It's my LOCAL copy, Render's is separate. No `QUALIFY`, no
+`ILIKE`, but CTEs and window functions work.
+
+### Mistakes & fixes
+
+- Used made-up column names in the SELECT (`original_team_name`) instead
+  of aliasing the real one (`tt.team_name AS original_team_name`).
+- `WHERE (subquery)` without `season =` (silent, see above).
+- **Renamed things in one place but not everywhere:** aliases `t`/`tt` →
+  `owner`/`orig` but the ON lines still said `t.`/`tt.`; variable
+  `draft_picks` → `picks` but `print(draft_picks)` didn't change (would have
+  printed the function itself). Ctrl+F the old name after a rename.
+- `seasone` typo in ORDER BY.
+- Forgot to save, twice. Claude was checking the file on disk and saw old
+  code. White dot on the tab = unsaved. Worth turning on File > Auto Save.
+- `season=season` with no `season` variable → `NameError`.
+
+### Questions / still confused about ❓
+
+- ❓ Renaming consistently. Same family as the copy-paste lesson last time.
+- ❓ Still haven't written a `x if cond else y` line myself (Claude did
+  this one). Good tutor session exercise.
+- ❓ Carried over: `insert_standings()` still isn't in `database.py`'s
+  `__main__` block.
+
+### Code snippets worth remembering
+
+```sql
+SELECT owner.team_name AS owner_team_name,                  -- alias.real_column AS new_name
+       orig.team_name  AS original_team_name,
+       dp.original_roster_id != dp.owner_roster_id AS traded_pick   -- 1/0, compare KEYS
+FROM draft_picks dp
+JOIN teams owner ON owner.roster_id = dp.owner_roster_id     -- same table, copy #1
+JOIN teams orig  ON orig.roster_id  = dp.original_roster_id  -- same table, copy #2
+WHERE season = (SELECT MAX(season) FROM draft_picks)         -- don't forget "season ="!
+ORDER BY round, dp.original_roster_id;                       -- stable order inside each round
+```
+
+```python
+season = picks[0]["season"] if picks else None   # empty list is falsy -> None, no IndexError
+print([dict(row) for row in picks])              # make sqlite3.Row objects readable
+```
+
 ---
 
 # Socratic Tutor Sessions 🧠
@@ -2058,5 +2152,106 @@ Not yet: exact print format of list of tuples, sort tuple-key "why",
 sets beyond `in`, the `x or 0` idiom (shown in notes, not tested).
 ```
 
+## Tutor Session 2026-11-15: truthiness review, `is None`, dict vs key
+
+### What we covered
+
+- Predict-the-output loop over `{"fpts": 0, "fpts_decimal": None}` with
+  keys `fpts`, `fpts_decimal`, `pts_ppr`. All three fall to `else`, each
+  for a different reason (`0`, stored `None`, missing key -> `None`).
+- Exercise: set `pf` so a real score (including `0`) is kept, and `None`
+  or a missing key becomes `"no score"`. Took a lot of tries, but the
+  final version passed all four test cases.
+- Side quest: `team.get(col)` vs `team.get("col")` vs `key["fpts"]`.
+
+### New concepts learned
+
+- ✅ **`0 == "0"` is `False`.** An int and a string are never equal in
+  Python. SQL Server would quietly convert `'0'` and say they match.
+  Python doesn't do that conversion.
+- ✅ **`==` doesn't care about truthiness.** It just compares two values.
+  Truthiness only matters when Python has to decide true/false on its
+  own, like with a bare `if x:`.
+- ✅ **`is None` is Python's `IS NULL`.** It's only true for `None`, and
+  `0`, `""`, and `[]` all fail it. That makes it the right check when `0`
+  is a real value I want to keep.
+- ✅ **Truthiness can't split `0` from `None`.** They're both falsy, so
+  `if x` and `if not x` treat them the same. If they need different
+  results, I need `is None`.
+- ✅ **`.get(key)` with no default returns `None` for a missing key.** So
+  `is None` handles both "key is there with `None`" and "key is missing"
+  in one check.
+- ✅ **Dict vs key name.** `settings` is the row (the data). `key` /
+  `col` is just a string holding a column name. You always look things
+  up from the dict: `settings.get(key)`, never `key["fpts"]`.
+- ✅ **Colons only go after `if`/`elif`/`else`/`for`/`def` lines.** Never
+  after a plain assignment. And `return` only works inside a `def`.
+
+### Mistakes & fixes
+
+- Predicted `fpts` (value `0`) would print "used it." Same misconception
+  as last session. Fixed once I looked at the *value* `.get()` returned.
+- Compared to `"0"` (string) instead of `0` (int).
+- Wrote `key["fpts"]` twice. `TypeError: string indices must be
+  integers, not 'str'`, because `key` is the string `"fpts"`, not the
+  dict.
+- `team.get("col")` returned `None`, because it searched for a key
+  literally called c-o-l. Should be `team.get(col)`.
+- Typo'd `"ftps"` AGAIN. Third session in a row now. Read key names
+  letter by letter.
+- Put `if settings.get("fpts"):` in the blank, which is backwards. It
+  fired for `112.5` and replaced the real score.
+- Said a missing key's `.get()` returns `0`. It's `None`. The `0` only
+  happens with `.get(key, 0)`.
+
+### Questions / still confused about ❓
+
+- ❓ Still owe an answer: in one sentence, what does `if x:` check
+  (without saying "present" or "exists"), and how is that different
+  from `if x is None:`? Start next session with this.
+- ❓ Writing the if/else *structure* from scratch is shaky. Needed the
+  skeleton handed to me.
+- ❓ Keep mixing up the dict and the key-name variable.
+
+### Code snippets worth remembering
+
+```python
+pf = settings.get("fpts")   # 112.5, 0, or None (missing key also gives None)
+if pf is None:              # like SQL IS NULL: only None, NOT 0
+    pf = "no score"         # store it, don't print it
+
+0 == "0"                    # False: int vs string, Python never converts
+team.get(col)               # col is a variable holding "wins" -> 7
+team.get("col")             # looks for a key literally named "col" -> None
+```
+
+### Saved state (paste after "resume from:" to continue)
+
+```
+Topic: Python (dynasty-dashboard edition)     overall: ████░░░░░░ 40%
+-----------------------------------------------------------------
+dicts and .get()          [████░░░░░░]  2/5  (down from 3)
+tuples and unpacking      [████░░░░░░]  2/5
+list comprehensions       [████░░░░░░]  2/5
+sets                      [██░░░░░░░░]  1/5
+truthiness / if-else expr [██████░░░░]  3/5  (up from 2) <- current
+sorting with key/lambda   [████░░░░░░]  2/5
+-----------------------------------------------------------------
+Source material: calculations.py (get_survivor_results,
+get_start_sit_percentages, get_standings).
+Open question to start with: one-sentence explanation of `if x:` (no
+"present"/"exists") vs `if x is None:`.
+Misconceptions: confuses the dict with the key-name variable
+(key["fpts"], team.get("col")); said missing-key .get() returns 0
+(it's None). Recurring "ftps" typo. Shaky writing if/else structure
+unaided (needed skeleton).
+Covered: truthiness of 0/None/missing, 0 == "0" is False (no implicit
+conversion, unlike SQL), `is None` as IS NULL, == vs truthiness.
+Not yet: exact print format of list of tuples, sort tuple-key "why",
+sets beyond `in`, the `x or default` idiom (good test: why does
+`settings.get("fpts") or "no score"` fail the {"fpts": 0} case?).
+Next .get() check needs unprompted dict-vs-key recall before going up.
+```
+
 ---
-*Last updated: 2026-11-14*
+*Last updated: 2026-11-17*

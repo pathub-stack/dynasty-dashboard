@@ -19,7 +19,7 @@
             <div class="site-nav-links">
                 <a href="https://docs.google.com/document/d/1KgUXgfbAu_HS8g-gyoAOuM61vUQfypMwJbk64DlRxY8/edit" target="_blank" rel="noopener">Bylaws</a>
                 <a class="is-coming-soon" href="{{ url_for('history') }}">League History</a>
-                <a class="is-coming-soon" href="{{ url_for('draft_picks') }}">2027 Draft Picks</a>
+                <a href="{{ url_for('draft_picks') }}">{% if draft_season %}{{ draft_season }} {% endif %}Draft Picks</a>
                 <a class="is-coming-soon" href="{{ url_for('power_rankings') }}">Power Rankings</a>
             </div>
         </nav>

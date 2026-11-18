@@ -214,6 +214,15 @@ Stage 3 — Polished UI:
   Doc, which is the official version. `BYLAWS.md` is a copy of it
   (synced 2026-11-12) plus a Developer Notes section the Doc doesn't
   have. If the Doc changes, re-sync `BYLAWS.md`; the Doc wins.
+- Draft pick ownership board ✅ 2026-11-17. `draft_picks` table
+  (season, round, original_roster_id, owner_roster_id) filled by
+  `insert_draft_picks()`, which tracks the next rookie draft via
+  `get_target_draft_season()` (rolls over once that season's draft is
+  `complete`). `/draft-picks` shows the newest season (`MAX(season)`),
+  one table per round, traded picks flagged. Nav label comes from
+  `draft_season` in the context processor. Not built yet: real slot
+  order (1.01-1.12) and the 1.13 comp pick row (Step 2 in Obsidian's
+  `Dynasty Dashboard Feature.md`).
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change
 indicator) considered and intentionally deferred to "someday," not v1 —

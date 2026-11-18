@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{% if season %}{{ season }} {% endif %}Draft Picks{% endblock %}
+{% block content %}
+<h1>{% if season %}{{ season }} {% endif %}Draft Picks</h1>
+<p class="hub-intro">Who owns every pick in the upcoming rookie draft. Picks are listed by original team, not by draft slot. The real 1.01 to 1.12 order gets set once the standings and playoffs are final.</p>
+
+{% if not picks %}
+    <p class="section-hint">No draft pick data yet. Check back after the next data refresh.</p>
+{% endif %}
+
+{# groupby splits the flat 60-row list into one bucket per round (keeps every row, unlike SQL's GROUP BY) #}
+{% for round_number, round_picks in picks|groupby("round") %}
+<section class="draft-round">
+    <h2 class="section-title">Round {{ round_number }}</h2>
+    <div class="table-scroll">
+    <table class="leaderboard">
+        <tr><th>Owner</th><th>Original Team</th></tr>
+        {% for row in round_picks %}
+        <tr{% if row["traded_pick"] %} class="is-traded"{% endif %}>
+            <td>
+                {{ row["owner_team_name"] }}
+                {% if row["traded_pick"] %}
+                    <span class="status-pill status-traded">Traded</span>
+                {% endif %}
+            </td>
+            <td class="draft-original">{{ row["original_team_name"] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</section>
+{% endfor %}
+{% endblock %}
