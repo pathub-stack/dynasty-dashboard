@@ -485,12 +485,14 @@ def draft_picks():
     round, 
     owner.team_name as owner_team_name,
     orig.team_name as original_team_name,
-    dp.original_roster_id != dp.owner_roster_id as traded_pick
+    dp.original_roster_id != dp.owner_roster_id as traded_pick,
+    13 - s.rank as slot
     FROM draft_picks dp 
     JOIN teams owner on owner.roster_id = dp.owner_roster_id
     JOIN teams orig on orig.roster_id = dp.original_roster_id  
+    LEFT JOIN standings s on s.roster_id = dp.original_roster_id
     WHERE season = (SELECT MAX(season) from draft_picks)
-    ORDER BY round, dp.original_roster_id
+    ORDER BY round, slot
     """)
 
     # 3. fetchall() into a variable (catch the return value!), close the connection

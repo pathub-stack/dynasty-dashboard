@@ -2047,6 +2047,42 @@ season = picks[0]["season"] if picks else None   # empty list is falsy -> None, 
 print([dict(row) for row in picks])              # make sqlite3.Row objects readable
 ```
 
+### Part 2 (same day): Sleeper-style board + projected bylaws order (Step 2a)
+
+Saw it live and it wasn't what I pictured. I wanted it to look like
+Sleeper's draft board, in real bylaws order. So:
+
+- **I wrote the SQL:** `LEFT JOIN standings`, `13 - s.rank AS slot`,
+  `ORDER BY round, slot`. Slots 1.01-1.06 are already exact per the bylaws
+  (worst record, then lower Max PF). 1.07-1.12 are *projected* from
+  standings until the playoffs decide them (that's 2b, Week 15).
+- **Claude rebuilt the template + CSS as a grid:** columns = slots, rows =
+  rounds, tiles with the pick number in the corner, gold tiles + "via" for
+  traded picks, "Projected" badge.
+
+✅ **`ORDER BY` columns are tiebreakers, left to right.** I had
+`ORDER BY round, dp.original_roster_id, s.rank DESC`. roster_id is unique
+within a round, so `rank` never got a say. Poop Island landing first was a
+coincidence (roster 1 AND worst team).
+
+✅ **Rank is upside down from draft slot.** Worst team = rank 12 = slot 1,
+so `slot = 13 - rank`. My first try was `s.rank AS slot` (just renamed it).
+
+✅ **`LEFT JOIN` when the other table might be empty.** An inner join to
+`standings` would make the whole board vanish if `standings` ever had no
+rows (like a fresh rebuild before `insert_standings()` runs).
+
+✅ **SQLite lets `ORDER BY` use a SELECT alias** (`ORDER BY round, slot`),
+same as SQL Server.
+
+- Mistake: `slot DESC` put 1.12 on the left. ASC is the default, just drop it.
+
+```sql
+13 - s.rank AS slot                                       -- worst team (rank 12) picks 1st
+LEFT JOIN standings s ON s.roster_id = dp.original_roster_id  -- keep picks even if standings is empty
+ORDER BY round, slot                                      -- 2nd column only breaks ties in the 1st
+```
+
 ---
 
 # Socratic Tutor Sessions 🧠

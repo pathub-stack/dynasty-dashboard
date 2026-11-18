@@ -218,10 +218,13 @@ Stage 3 — Polished UI:
   (season, round, original_roster_id, owner_roster_id) filled by
   `insert_draft_picks()`, which tracks the next rookie draft via
   `get_target_draft_season()` (rolls over once that season's draft is
-  `complete`). `/draft-picks` shows the newest season (`MAX(season)`),
-  one table per round, traded picks flagged. Nav label comes from
-  `draft_season` in the context processor. Not built yet: real slot
-  order (1.01-1.12) and the 1.13 comp pick row (Step 2 in Obsidian's
+  `complete`). `/draft-picks` shows the newest season (`MAX(season)`)
+  as a Sleeper-style grid (columns = draft slots, rows = rounds, gold
+  tiles for traded picks), in projected bylaws order: slot =
+  `13 - standings.rank`, so 1.01-1.06 are exact and 1.07-1.12 are
+  projected until the playoffs. Nav label comes from `draft_season` in
+  the context processor. Not built yet: playoff bracket for 1.07-1.12
+  and the 1.13 comp pick tile (Step 2b/2c in Obsidian's
   `Dynasty Dashboard Feature.md`).
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change

@@ -598,25 +598,100 @@ h1 {
 
 /* ---- Draft picks page ---- */
 
-.draft-round {
-    margin-bottom: 2rem;
+/* Sleeper-style board: columns = draft slots, rows = rounds.
+   12 team columns don't fit the site's normal 1100px column, so the board
+   breaks out of it: centered on the screen, up to 1500px wide. On smaller
+   screens it scrolls sideways inside its own box, never the whole page. */
+.draft-board-scroll {
+    /* Negative left margin pulls the box out to the screen's 1rem gutter
+       (or to a centered 1500px) instead of the page column's edge */
+    width: min(100vw - 2rem, 1500px);
+    margin-left: calc(50% - min(50vw - 1rem, 750px));
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
 }
 
-/* Gold, not green or red: a traded pick isn't good or bad, just notable.
-   Same pill shape as survivor's status pills. */
-.status-traded {
-    background: rgba(210, 153, 34, 0.12);
-    color: var(--color-gold);
-    margin-left: 0.5rem;
+.draft-board {
+    display: grid;
+    /* Narrow "R1" column, then 12 equal slot columns that never shrink
+       below 92px. If 12 x 92px doesn't fit, the box above scrolls. */
+    grid-template-columns: 2.5rem repeat(12, minmax(92px, 1fr));
+    gap: 6px;
 }
 
-/* Original team is secondary info, so it's muted unless the pick moved */
-.draft-original {
+.draft-board__corner {
+    /* Empty top-left cell so the team names line up over their columns */
+}
+
+.draft-board__team {
+    font-family: var(--font-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 0 0.25rem 0.4rem;
+    overflow-wrap: anywhere;
+    align-self: end;
+}
+
+.draft-board__round {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* One pick. Sleeper colors tiles by player position; with no players
+   drafted yet, color means ownership instead: plain = still the original
+   team's pick, gold = traded. */
+.draft-tile {
+    position: relative;
+    min-height: 4.2rem;
+    /* Extra top padding keeps long owner names clear of the pick number */
+    padding: 1.35rem 0.5rem 0.4rem;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.15rem;
+}
+
+.draft-tile__pick {
+    position: absolute;
+    top: 0.3rem;
+    right: 0.45rem;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
     color: var(--color-text-muted);
 }
 
-.leaderboard tr.is-traded .draft-original {
-    color: var(--color-text);
+.draft-tile__owner {
+    font-weight: 700;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+/* Gold, not green or red: a traded pick isn't good or bad, just notable */
+.draft-tile--traded {
+    background: rgba(210, 153, 34, 0.14);
+    border-color: var(--color-gold);
+}
+
+.draft-tile--traded .draft-tile__pick {
+    color: var(--color-gold);
+}
+
+.draft-tile__via {
+    font-size: 0.68rem;
+    color: var(--color-gold);
+    overflow-wrap: anywhere;
 }
 
 /* ---- Admin login form ---- */
