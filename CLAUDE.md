@@ -91,6 +91,7 @@ At the end of every coding session, update `LEARNING_NOTES.md` with a new entry.
 | `calculations.py` | Logic for survivor, start/sit %, high score |
 | `app.py` | Flask web app |
 | `templates/index.html` | HTML for the dashboard |
+| `analysis/draft_odds.py` | Side project (2026-11-19), not used by the site: Monte Carlo sim of the rest of the regular season and rookie draft slot odds, with a `--trade` scenario. Own `analysis/requirements.txt` (numpy, pandas) |
 | `requirements.txt` | Package list. Add new packages by hand, don't overwrite with `pip freeze` (gunicorn is only installed on Render, so freeze would drop it and break deploys) |
 
 ---

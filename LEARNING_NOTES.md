@@ -2085,6 +2085,110 @@ ORDER BY round, slot                                      -- 2nd column only bre
 
 ---
 
+## Session 2026-11-19: Draft odds simulator (side project, Claude drove this one)
+
+Side project, not part of the website. I wanted to know what my record will
+probably be after weeks 11-14, and what that means for my rookie draft
+slot. I had Claude write this one so I could see the whole thing come
+together fast. The next one I write myself.
+
+Run it from the project root:
+`python analysis/draft_odds.py` or
+`python analysis/draft_odds.py --trade "Justin Jefferson" --to bmc3377`
+
+### What we built
+
+- `analysis/draft_odds.py`: a Monte Carlo simulation. It plays out the rest
+  of the regular season 10,000 times and counts where my picks land.
+- `analysis/requirements.txt`: numpy + pandas, kept out of the main
+  requirements.txt so Render doesn't install them for nothing.
+- `analysis/cache/` (gitignored): saved API responses so rerunning a few
+  trade scenarios doesn't hammer Sleeper's 90/minute limit.
+
+How one simulated season works:
+1. Every player gets Sleeper's projection for each week. Bye week = no
+   projection = 0. Ruled out (Out/IR/Sus) = 0. That's how byes and
+   half-set lineups get handled: nobody's current lineup is used, every team
+   starts its **best available projected lineup** each week. (Also what the
+   bylaws require, since benching starters to tank isn't allowed. Trading
+   players away to rebuild is explicitly fine.)
+2. Each player's actual score = projection x a random "miss ratio" pulled
+   from this season's real misses (actual / projected, weeks 1-10).
+3. Higher team total wins. Track wins, PF, and Max PF (best lineup in
+   hindsight) for every team.
+4. After week 14, sort with the bylaws rules: top 6 by wins then PF make
+   the playoffs, the other 6 pick 1.01-1.06 by worst record, tiebreak
+   lower Max PF.
+
+Then repeat 10,000 times and basically `GROUP BY draft_slot`.
+
+First results (no trade): I'm 2-8, most likely end 3-11 (45%), and my own
+1st is 1.01 about 82% of the time. My other 1st (mattisworth's) is
+100% a playoff pick, so 1.07-1.12. Trading Jefferson to bmc3377 with
+nothing back pushes my 1.01 odds to about 94%.
+
+### New concepts learned
+
+- ✅ **Monte Carlo simulation.** You can't do the math directly because my
+  slot depends on everyone else's record too. So you fake the season a
+  bunch of times and count outcomes. It's just `COUNT(*) GROUP BY outcome`
+  over fake data.
+- ✅ **Bootstrapping.** Instead of assuming scores follow a bell curve, reuse
+  real past misses. RBs/WRs/TEs have a median ratio around 0.8 (a typical
+  week comes in under projection, with occasional big boom weeks pulling the
+  average back up). QBs are steadier (about 0.97).
+- ✅ **numpy arrays = set-based SQL.** Scores are a 2D grid: 10,000 rows
+  (sims) x one column per player. `np.sort(..., axis=1)` sorts every row at
+  once. Like an `UPDATE` on the whole table instead of a cursor. That's why
+  10,000 seasons takes about 2 seconds.
+- ✅ **`np.lexsort` = `ORDER BY` with several columns**, but backwards:
+  the LAST key is the main sort. `lexsort((pf, wins))` = `ORDER BY wins, pf`.
+- ✅ **pandas `value_counts(normalize=True)`** = `COUNT(*) * 1.0 / total
+  GROUP BY x`. `df.merge(..., how="outer")` = `FULL OUTER JOIN`.
+- **Common random numbers.** Each player-week gets the same random draws in
+  the "no trade" and "trade" runs, so the difference is only the trade, not
+  luck. ❓ Still a bit fuzzy on why seeding per player instead of once for
+  the whole run is what makes this work.
+- **argparse** turns command line flags (`--trade`, `--to`) into variables.
+  Like stored procedure parameters with defaults.
+
+### Mistakes & fixes
+
+- **Assumed my team was roster_id 12 because I'm 12th in the standings.**
+  Wrong, I'm roster_id 1. roster_id is just Sleeper's internal team number,
+  it has nothing to do with rank. That bad guess showed the wrong roster
+  and the wrong picks during setup. The simulator itself looked me up by
+  name so it was fine. Lesson: look up ids, never infer them.
+- **Backup QB was starting at FLEX.** `choose_starters()` put leftover QBs
+  in the flex pool, but FLEX is RB/WR/TE only. Teams with 2 QBs were
+  getting inflated scores. Fix: skip QB when building flex leftovers.
+- **Crash: `pools.get(position)` returned None** for a player listed at an
+  odd position (not QB/RB/WR/TE). Like an INNER JOIN assumption on a LEFT
+  JOIN that came back NULL. Fix: a fallback "ALL" pool, basically COALESCE.
+- **Misread debug output.** When piping output, Python buffers normal
+  prints but not error messages, so the error showed up earlier than
+  expected and `tail` hid it. `print(..., flush=True)` fixes the ordering.
+
+### Questions / still confused about ❓
+
+- ❓ Why per-player seeds give a fair before/after trade comparison.
+- ❓ Model blind spots: it ignores injuries after this week, players coming
+  off IR (Achane is just excluded), waiver pickups, and future trades by
+  anyone else. Projections and ratios are only as good as 10 weeks of data.
+- ❓ Playoff picks only show as "1.07-1.12". Simulating the bracket would
+  split that out.
+
+### Code snippets worth remembering
+
+```python
+counts = pd.Series(final_wins).value_counts(normalize=True)  # COUNT(*)/total GROUP BY wins
+order = np.lexsort((-pf, -wins))                             # ORDER BY wins DESC, pf DESC
+ranked = -np.sort(-scores, axis=1)                           # sort every sim's row, high to low
+score = projection * rng.choice(ratio_pool, size=10_000)     # 10,000 random weeks for one player
+```
+
+---
+
 # Socratic Tutor Sessions 🧠
 
 > Quiz sessions, separate from the build sessions above. Claude asks me

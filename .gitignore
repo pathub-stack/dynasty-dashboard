@@ -29,3 +29,6 @@ players_cache.json
 # OS junk files
 .DS_Store
 Thumbs.db
+
+# analysis/draft_odds.py's saved API responses (refetched after 6 hours)
+analysis/cache/
