@@ -157,6 +157,20 @@ def get_draft(draft_id):
     return _get_json(url)
 
 
+def get_winners_bracket(league_id):
+    """Return the main playoff bracket, one dict per playoff game.
+
+    Each row looks like {"m": 1, "r": 1, "w": 7, "l": 9, "t1": 7, "t2": 9}:
+    m = match id, r = round, t1/t2 = the two roster_ids playing, w/l =
+    winner/loser roster_ids (None until the game is final). Placement
+    games also have a "p" key (p=1 is the championship, p=3 is the 3rd
+    place game, p=5 is the 5th place game). Before the playoffs start,
+    every w/l is None and later rounds' teams are None too.
+    """
+    url = f"{BASE_URL}/league/{league_id}/winners_bracket"
+    return _get_json(url)
+
+
 if __name__ == "__main__":
     week = 1
     team_names_by_roster = get_team_names_by_roster(TEST_LEAGUE_ID)

@@ -24,6 +24,7 @@ from calculations import (
     get_standings,
     get_pick_ownership,
     get_target_draft_season,
+    get_draft_order,
 )
 
 
@@ -151,6 +152,25 @@ def create_tables():
         season INTEGER,
         round INTEGER,
         PRIMARY KEY (season, round, original_roster_id)
+        )
+    """)
+
+    # One row per team per rookie draft: which slot (1-12) that team's
+    # ORIGINAL picks land in. (season, roster_id) is the natural key since
+    # a team gets exactly one slot per draft, and that slot is the same in
+    # every round, so there's no need to repeat it per round the way
+    # draft_picks does. Keying on season (not just roster_id) means next
+    # year's order gets its own rows instead of overwriting this year's.
+    # projected is stored as 0/1 because SQLite has no real BOOLEAN type,
+    # same as a BIT column in SQL Server: 1 = still a projection (playoffs
+    # not decided yet), 0 = locked in.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS draft_order (
+        season INTEGER,
+        roster_id INTEGER,
+        slot INTEGER,
+        projected INTEGER,
+        PRIMARY KEY (season, roster_id)
         )
     """)
 
@@ -475,6 +495,44 @@ def insert_draft_picks(league_id):
         if connection:
             connection.close()
 
+
+def insert_draft_order(league_id):
+    """
+    Write each team's draft slot for the target draft season into draft_order
+
+    Same season as insert_draft_picks (get_target_draft_season), so the
+    two tables always describe the same upcoming draft and can be JOINed
+    on season + roster_id (draft_picks.original_roster_id = draft_order.roster_id).
+    get_draft_order() hands back projected as a Python True/False, and
+    int() turns that into the 1/0 SQLite actually stores.
+    """
+
+    connection = None
+    try:
+        target_season = get_target_draft_season(league_id)
+        draft_order = get_draft_order(league_id)
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        for roster_id, slot, projected in draft_order:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO draft_order (season, roster_id, slot, projected)
+                VALUES (?, ?, ?, ?)
+                """,
+                (target_season, roster_id, slot, int(projected))
+            )
+
+        connection.commit()
+    except requests.exceptions.RequestException:
+        logging.error("insert_draft_order: Sleeper API call failed, skipping this refresh")
+        if connection:
+            connection.rollback()
+    finally:
+        if connection:
+            connection.close()
+
 def insert_start_sit(league_id):
     """Snapshot each team's season-to-date PF / Max PF / start-sit % and
     write it into start_sit, tagged with the most recently played week.
@@ -537,6 +595,7 @@ def refresh_all_data(league_id=LEAGUE_ID):
     insert_survivor_status(league_id)
     insert_standings(league_id)
     insert_draft_picks(league_id)
+    insert_draft_order(league_id)
 
 
 if __name__ == "__main__":
@@ -641,6 +700,23 @@ if __name__ == "__main__":
         JOIN teams ON teams.roster_id = draft_picks.owner_roster_id
         GROUP BY teams.team_name, draft_picks.season
         ORDER BY picks_owned DESC
+    """)
+    for row in cursor.fetchall():
+        print(row)
+    connection.close()
+
+    insert_draft_order(LEAGUE_ID)
+    print("Draft order inserted")
+
+    # Sanity check: should be 12 rows, slots 1-12 with no gaps or
+    # repeats. projected = 1 until the playoffs settle slots 7-12.
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT draft_order.season, draft_order.slot, teams.team_name, draft_order.projected
+        FROM draft_order
+        JOIN teams ON teams.roster_id = draft_order.roster_id
+        ORDER BY draft_order.season, draft_order.slot
     """)
     for row in cursor.fetchall():
         print(row)

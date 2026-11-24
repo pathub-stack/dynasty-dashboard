@@ -224,9 +224,17 @@ Stage 3 — Polished UI:
   tiles for traded picks), in projected bylaws order: slot =
   `13 - standings.rank`, so 1.01-1.06 are exact and 1.07-1.12 are
   projected until the playoffs. Nav label comes from `draft_season` in
-  the context processor. Not built yet: playoff bracket for 1.07-1.12
-  and the 1.13 comp pick tile (Step 2b/2c in Obsidian's
-  `Dynasty Dashboard Feature.md`).
+  the context processor.
+- Draft board finished ✅ 2026-11-23 (Step 2b/2c). Slots now come from a
+  `draft_order` table (season, roster_id, slot, projected) filled by
+  `insert_draft_order()` from `get_draft_order()`: 1.01-1.06 = `13 - rank`,
+  1.07-1.12 from `/winners_bracket` by elimination round (3rd/5th place
+  games ignored), still-alive teams projected. Same-round ties use
+  `draft_priority_key()` (wins, lower Max PF, higher PF), also used for
+  the bottom 6. 13th "Comp" column shows 1.13 (start/sit leader as of the
+  latest snapshot at week <= 14; `COMP_PICK_ROUND` constant in app.py).
+  Open: verify in Week 15 whether Sleeper adds playoff points/results into
+  season PF / Max PF / record.
 
 Power rankings (weekly subjective 1-12 rank + week-over-week change
 indicator) considered and intentionally deferred to "someday," not v1 —

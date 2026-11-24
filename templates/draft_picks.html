@@ -3,9 +3,12 @@
 {% block content %}
 <div class="section-title-row">
     <h1>{% if season %}{{ season }} {% endif %}Rookie Draft Board</h1>
+    {# Only while something on the board can still change: a playoff slot not decided yet, or a comp pick leader before the regular season is fully recorded #}
+    {% if any_projected or (comp and comp.projected) %}
     <span class="badge-soon">Projected</span>
+    {% endif %}
 </div>
-<p class="hub-intro">The draft order if the season ended today, following the bylaws. 1.01 to 1.06 go to the non-playoff teams, worst record first. 1.07 to 1.12 are projected from the current standings until the playoffs decide them. Every round uses the same order. Gold tiles are picks that have been traded.</p>
+<p class="hub-intro">The rookie draft order, following the bylaws. 1.01 to 1.06 go to the non-playoff teams, worst record first. 1.07 to 1.12 are set by the playoff bracket, projected from the current standings until each playoff round is played (projected pick numbers are shown in italics). 1.13 is the compensatory pick. Every round uses the same order. Gold tiles are picks that have been traded.</p>
 
 {% if not picks %}
     <p class="section-hint">No draft pick data yet. Check back after the next data refresh.</p>
@@ -22,11 +25,14 @@
     {% for row in rounds[0].list %}
     <div class="draft-board__team">{{ row["original_team_name"] }}</div>
     {% endfor %}
+    {# 13th column: the comp pick isn't any one team's slot, so it gets a generic header #}
+    <div class="draft-board__team draft-board__team--comp">Comp</div>
 
     {% for round in rounds %}
     <div class="draft-board__round">R{{ round.grouper }}</div>
         {% for row in round.list %}
-        <div class="draft-tile{% if row['traded_pick'] %} draft-tile--traded{% endif %}">
+        {# Only slots 7-12 can be projected (1-6 are final once the regular season ends), so only those get the italic marker #}
+        <div class="draft-tile{% if row['traded_pick'] %} draft-tile--traded{% endif %}{% if row['projected'] and row['slot'] and row['slot'] >= 7 %} draft-tile--projected{% endif %}">
             <span class="draft-tile__pick">{% if row["slot"] %}{{ row["round"] }}.{{ "%02d" % row["slot"] }}{% endif %}</span>
             <span class="draft-tile__owner">{{ row["owner_team_name"] }}</span>
             {% if row["traded_pick"] %}
@@ -34,9 +40,28 @@
             {% endif %}
         </div>
         {% endfor %}
+
+        {# The comp column: a real tile in the comp pick's round, an empty placeholder everywhere else so the grid stays 13 columns wide #}
+        {% if round.grouper == comp_pick_round %}
+        <div class="draft-tile draft-tile--comp{% if comp and comp.projected %} draft-tile--projected{% endif %}">
+            <span class="draft-tile__pick">{{ comp_pick_round }}.13</span>
+            <span class="status-pill status-comp">Comp</span>
+            {% if comp %}
+            <span class="draft-tile__owner">{{ comp.team_name }}</span>
+            {# percentage is stored as a fraction (0.873), so x100 for display #}
+            <span class="draft-tile__via">{{ "%.1f" % (comp.percentage * 100) }}% start/sit</span>
+            {% else %}
+            <span class="draft-tile__via">No start/sit data yet</span>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="draft-tile draft-tile--empty"></div>
+        {% endif %}
     {% endfor %}
 </div>
 </div>
+
+<p class="section-hint">Compensatory pick, awarded to the regular-season start/sit % leader. Added by the commissioner during the draft.</p>
 
 {% endif %}
 {% endblock %}

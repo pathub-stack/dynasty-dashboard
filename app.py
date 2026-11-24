@@ -35,6 +35,18 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 # does it.
 WAIVER_BUDGET = 200
 
+# Which round the compensatory pick (the start/sit % winner's bonus pick)
+# goes at the end of. The bylaws put it at 1.13 today, but list moving it
+# to 2.13 as a possible future change. Keeping the round in one constant
+# means that change would be a one-number edit here instead of a hunt
+# through the route and the template.
+COMP_PICK_ROUND = 1
+
+# Last week of the regular season (playoffs start Week 15, per the bylaws).
+# The comp pick is based on REGULAR-season start/sit %, so anything
+# recorded after this week shouldn't count toward it.
+REGULAR_SEASON_END_WEEK = 14
+
 # One color per team instead of every bar/card sharing a single green --
 # every dashboard card looked identical regardless of which team it was,
 # which read as more "spreadsheet" than "fantasy football."
@@ -467,10 +479,13 @@ def history():
 def draft_picks():
     """Who owns every pick in the upcoming rookie draft, grouped by round.
 
-    Reads the draft_picks table (filled by database.py's
-    insert_draft_picks() on every refresh), never the Sleeper API. Picks
-    are listed by original team, not draft slot: the real 1.01-1.12 order
-    is Step 2 of the draft pick roadmap.
+    Reads the draft_picks table (who owns each pick) and the draft_order
+    table (which slot each original team drafts from), both filled by
+    database.py on every refresh, never the Sleeper API. Slots 1-6 are
+    the non-playoff teams; 7-12 come from the playoff bracket and are
+    marked projected in draft_order until each playoff round is played.
+    Also looks up who's in line for the compensatory pick (1.13) from
+    start_sit.
     """
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -480,34 +495,95 @@ def draft_picks():
     # the table holds two seasons and this keeps showing the newest one.
     # traded_pick compares roster_ids (keys), not team names (labels that
     # owners rename), and comes back as 1/0 since SQLite has no booleans.
+    #
+    # draft_order is joined on BOTH roster_id and season, like a composite
+    # key join in SQL: once two seasons are stored, roster_id alone would
+    # match a team's slot from the wrong year. LEFT JOIN (not JOIN) so a
+    # pick still shows up, just without a slot number, if draft_order
+    # hasn't been filled yet for that team.
     cursor.execute("""
-    SELECT season, 
-    round, 
+    SELECT dp.season,
+    dp.round,
     owner.team_name as owner_team_name,
     orig.team_name as original_team_name,
     dp.original_roster_id != dp.owner_roster_id as traded_pick,
-    13 - s.rank as slot
-    FROM draft_picks dp 
+    d.slot as slot,
+    d.projected as projected
+    FROM draft_picks dp
     JOIN teams owner on owner.roster_id = dp.owner_roster_id
-    JOIN teams orig on orig.roster_id = dp.original_roster_id  
-    LEFT JOIN standings s on s.roster_id = dp.original_roster_id
-    WHERE season = (SELECT MAX(season) from draft_picks)
-    ORDER BY round, slot
+    JOIN teams orig on orig.roster_id = dp.original_roster_id
+    LEFT JOIN draft_order d on d.roster_id = dp.original_roster_id AND d.season = dp.season
+    WHERE dp.season = (SELECT MAX(season) from draft_picks)
+    ORDER BY dp.round, slot
     """)
 
     # 3. fetchall() into a variable (catch the return value!), close the connection
     picks = cursor.fetchall()
+
+    # ---- Compensatory pick: the regular-season start/sit % leader.
+    # start_sit holds one snapshot row per team per refreshed week, so
+    # first find the latest snapshot week that's still inside the regular
+    # season (the inner MAX), then take the single highest % from it
+    # (ORDER BY ... DESC LIMIT 1, like SELECT TOP 1 in SQL Server).
+    cursor.execute(
+        """
+        SELECT teams.team_name, start_sit.percentage
+        FROM start_sit
+        JOIN teams ON teams.roster_id = start_sit.roster_id
+        WHERE start_sit.week = (
+            SELECT MAX(week) FROM start_sit WHERE week <= ?
+        )
+        ORDER BY start_sit.percentage DESC
+        LIMIT 1
+        """,
+        (REGULAR_SEASON_END_WEEK,),
+    )
+    comp_row = cursor.fetchone()
+
+    # Caveat: insert_start_sit() tags each snapshot with the week IN
+    # PROGRESS when the refresh ran, not the last finished week. So the
+    # week 14 snapshot can be taken before week 14's games are done, and
+    # the leader can still change. Only once a snapshot tagged with a
+    # later week exists do we know the regular season was fully played
+    # out, so until then the comp pick is shown as projected.
+    # EXISTS returns 1/0, same as traded_pick above.
+    cursor.execute(
+        "SELECT EXISTS (SELECT 1 FROM start_sit WHERE week > ?)",
+        (REGULAR_SEASON_END_WEEK,),
+    )
+    regular_season_recorded = cursor.fetchone()[0]
     connection.close()
+
+    # fetchone() returns None when start_sit is empty (e.g. before week 1),
+    # so the template gets comp=None and shows an empty comp tile.
+    if comp_row:
+        comp = {
+            "team_name": comp_row["team_name"],
+            "percentage": comp_row["percentage"],
+            "projected": not regular_season_recorded,
+            "round": COMP_PICK_ROUND,
+        }
+    else:
+        comp = None
 
     # Every row has the same season (the WHERE above), so read it off the
     # first one. An empty list is falsy, so an empty table gives None
     # instead of crashing on picks[0] (IndexError).
     season = picks[0]["season"] if picks else None
 
+    # Show the "Projected" badge if ANY pick's slot isn't locked in yet.
+    # `!= 0` (not `== 1`) on purpose: a pick with no draft_order row at all
+    # comes back as None from the LEFT JOIN, and an unknown slot is
+    # definitely not final either. That also covers an empty draft_order.
+    any_projected = any(row["projected"] != 0 for row in picks)
+
     return render_template(
         "draft_picks.html",
         picks=picks,
-        season=season
+        season=season,
+        any_projected=any_projected,
+        comp=comp,
+        comp_pick_round=COMP_PICK_ROUND,
     )
 
 

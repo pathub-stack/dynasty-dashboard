@@ -11,8 +11,28 @@ from sleeper import (
     get_team_names_by_roster,
     get_traded_picks,
     get_draft,
+    get_winners_bracket,
     LEAGUE_ID,
 )
+
+
+def draft_priority_key(wins, max_pf, pf):
+    """Sort key for rookie draft order between teams in the same group.
+
+    Sorting ascending by this key puts the EARLIEST pick first. Per
+    BYLAWS.md (Rookie Supplemental Drafts):
+    1. Worse record picks earlier (fewer wins first).
+    2. Tied record: lower Max PF picks earlier.
+    3. Tied record AND Max PF: HIGHER total PF picks earlier (so the team
+       that set better lineups isn't the one punished).
+
+    Rules 1 and 2 are ascending, but rule 3 runs the other way. In SQL
+    that's just ORDER BY wins ASC, max_pf ASC, pf DESC, since every column
+    gets its own direction. Python's sort only has one reverse flag for
+    the whole key, so the trick is to negate the column that goes the
+    other way: sorting -pf ascending is the same as sorting pf descending.
+    """
+    return (wins, max_pf, -pf)
 
 
 def get_effective_current_week(league_info):
@@ -176,10 +196,13 @@ def get_standings(league_id):
     - All 12 teams: wins, then PF (total points scored) -- this decides
       who's in the top 6 playoff spots, so a tie straddling the 6/7 line
       is always settled by PF.
-    - Bottom 6 only, re-sorted: wins, then Max PF. Lower Max PF ranks
-      LOWER here, which means that team picks EARLIER in the rookie draft
-      (the draft reads non-playoff teams bottom-up). That's why both sorts
-      use reverse=True -- descending on every key, no mixed directions.
+    - Bottom 6 only, re-sorted: wins, then Max PF, then PF, using
+      draft_priority_key(). Lower Max PF ranks LOWER here, which means
+      that team picks EARLIER in the rookie draft (the draft reads
+      non-playoff teams bottom-up). If record and Max PF are both tied,
+      the team with HIGHER PF ranks lower and picks earlier.
+      draft_priority_key() sorts earliest pick first, so reverse=True
+      flips it to "best to worst" like the rest of the list.
     """
     rosters = get_league_rosters(league_id)
     team_names_by_roster = get_team_names_by_roster(league_id)
@@ -199,7 +222,13 @@ def get_standings(league_id):
     results.sort(key=lambda result: (result[2], result[4]), reverse=True)
     top_six = results[:6]
     bottom_six = results[6:]
-    bottom_six.sort(key=lambda result: (result[2], result[5]), reverse=True)
+    # result[2] = wins, result[5] = max_pf, result[4] = pf. reverse=True
+    # turns "earliest pick first" into "best team first", so the LAST row
+    # here (rank 12) is the team that picks 1.01.
+    bottom_six.sort(
+        key=lambda result: draft_priority_key(result[2], result[5], result[4]),
+        reverse=True,
+    )
     return top_six + bottom_six
 
 
@@ -343,6 +372,137 @@ def get_pick_ownership(league_id, season):
         picks.append((season, round_number, original_roster_id, owner))
     return picks
 
+
+def build_draft_order(standings, bracket, regular_season_over, playoff_teams=6):
+    """Turn standings + the playoff bracket into rookie draft slots.
+
+    This is the pure "math" half of get_draft_order(): it never calls the
+    Sleeper API, it only works on what's passed in. That split is what
+    makes it testable, since you can hand it a made-up bracket (say, only
+    round 1 finished) and check the answer without waiting for real games.
+
+    standings: get_standings() output, best to worst, rows of
+        (roster_id, team_name, wins, losses, pf, max_pf).
+    bracket: get_winners_bracket() output (a list of game dicts).
+    regular_season_over: True once no regular season week is left to play.
+    playoff_teams: how many teams make the playoffs (6 in this league).
+
+    Returns a list of (roster_id, slot, projected) tuples sorted by slot,
+    where slot 1 is pick 1.01. projected is True when that slot can still
+    change, False when it's locked in.
+    """
+    num_teams = len(standings)
+    first_playoff_slot = num_teams - playoff_teams + 1  # 7 in a 12 team, 6 playoff league
+
+    # Like building a lookup table keyed on roster_id, so the tiebreak
+    # stats can be fetched for any team without re-scanning standings.
+    priority_by_roster = {
+        roster_id: draft_priority_key(wins, max_pf, pf)
+        for roster_id, team_name, wins, losses, pf, max_pf in standings
+    }
+
+    draft_order = []
+
+    # Non-playoff teams (ranks 7-12): get_standings() already sorted them
+    # in bylaws draft order, so the slot is just 13 - rank. They're locked
+    # once the regular season is over, since nothing after that changes
+    # their record.
+    for rank, row in enumerate(standings, start=1):
+        if rank > playoff_teams:
+            roster_id = row[0]
+            draft_order.append((roster_id, num_teams + 1 - rank, not regular_season_over))
+
+    # Playoff teams (ranks 1-6), best first. The set version is for fast
+    # "is this team a playoff team?" checks, like WHERE roster_id IN (...).
+    playoff_ids = [row[0] for row in standings[:playoff_teams]]
+    playoff_id_set = set(playoff_ids)
+
+    # Walk the bracket and sort every decided loser into the round they
+    # were knocked out in. losers_by_round is like a GROUP BY round:
+    # {1: [9, 3], 2: [7, 10]}.
+    losers_by_round = {}
+    final_loser = None
+    champion = None
+    for game in bracket:
+        loser = game.get("l")
+        if loser is None or loser not in playoff_id_set:
+            # Not played yet (or, defensively, a team the bracket and our
+            # standings disagree on, so it can't get two slots).
+            continue
+        if game.get("p") == 1:
+            # The championship game: loser picks 11, winner picks 12.
+            final_loser = loser
+            champion = game.get("w")
+        elif "p" in game:
+            # 3rd and 5th place games don't affect the draft (bylaws), and
+            # their losers were already counted when they were knocked out.
+            continue
+        else:
+            losers_by_round.setdefault(game["r"], []).append(loser)
+
+    # Eliminated teams in slot order: earlier rounds first, and within a
+    # round, the same tiebreak as the non-playoff teams (worst record
+    # first, then lower Max PF, then higher PF).
+    eliminated = []
+    for round_number in sorted(losers_by_round):
+        eliminated += sorted(losers_by_round[round_number], key=lambda rid: priority_by_roster[rid])
+    if final_loser is not None:
+        eliminated.append(final_loser)
+    if champion is not None:
+        eliminated.append(champion)
+
+    # Teams still alive take whatever slots are left, as a projection:
+    # worst seed first, so the 1 seed is projected to pick last (1.12).
+    eliminated_set = set(eliminated)
+    still_alive = [rid for rid in reversed(playoff_ids) if rid not in eliminated_set]
+
+    slot = first_playoff_slot
+    for roster_id in eliminated:
+        draft_order.append((roster_id, slot, False))
+        slot += 1
+    for roster_id in still_alive:
+        draft_order.append((roster_id, slot, True))
+        slot += 1
+
+    draft_order.sort(key=lambda row: row[1])
+    return draft_order
+
+
+def get_draft_order(league_id):
+    """Return the rookie draft order as (roster_id, slot, projected) tuples.
+
+    Always 12 rows (one per team), sorted by slot, slot an int 1-12 where
+    1 means pick 1.01. projected is True while that team's slot can still
+    move, False once it's final. Per BYLAWS.md (Rookie Supplemental Drafts):
+    - Slots 1-6: non-playoff teams, worst record first (tiebreaks in
+      draft_priority_key()). Projected until the regular season ends.
+    - Slots 7-12: playoff teams, by how far they got in the main bracket.
+      The consolation and 3rd/5th place games don't count.
+
+    This function only gathers the data (API calls); the actual logic lives
+    in build_draft_order() so it can be tested with a made-up bracket.
+    The 1.13 compensatory pick isn't included here, it's a separate thing.
+    """
+    standings = get_standings(league_id)
+    league_info = get_league_info(league_id)
+    bracket = get_winners_bracket(league_id) or []  # None before the bracket exists
+
+    settings = league_info["settings"]
+    # Read from league settings instead of hardcoding 6, in case the
+    # league ever votes to change the playoff size.
+    playoff_teams = settings.get("playoff_teams", 6)
+
+    # The regular season is over once the "current" week is a playoff
+    # week. get_effective_current_week() is "leg" adjusted for Sleeper's
+    # Tuesday lag (see its docstring). The status check covers the
+    # offseason, when "leg" may no longer mean anything useful.
+    regular_season_over = (
+        league_info["status"] in ("post_season", "complete")
+        or get_effective_current_week(league_info) >= settings["playoff_week_start"]
+    )
+
+    return build_draft_order(standings, bracket, regular_season_over, playoff_teams)
+
 if __name__ == "__main__":
     eliminations, survivors = get_survivor_results(LEAGUE_ID)
 
@@ -393,4 +553,10 @@ if __name__ == "__main__":
 
     print("\n--- Upcoming Draft ---")
     print(get_target_draft_season(LEAGUE_ID))
+
+    print("\n--- Rookie Draft Order ---")
+    team_names_by_roster = get_team_names_by_roster(LEAGUE_ID)
+    for roster_id, slot, projected in get_draft_order(LEAGUE_ID):
+        projected_note = " (projected)" if projected else ""
+        print(f"1.{slot:02d}: {team_names_by_roster[roster_id]}{projected_note}")
     

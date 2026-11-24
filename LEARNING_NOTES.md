@@ -2187,6 +2187,112 @@ ranked = -np.sort(-scores, axis=1)                           # sort every sim's 
 score = projection * rng.choice(ratio_pool, size=10_000)     # 10,000 random weeks for one player
 ```
 
+## Session 2026-11-19 (cont'd): "what if" questions with the simulator
+
+Used the simulator to ask follow-up questions with one-off scripts (not
+saved in the repo).
+
+### New concepts learned
+
+- ✅ **Conditional probability = GROUP BY on an outcome.** Tag each of the
+  10,000 seasons as "won week 11" or "lost week 11", then average the 1.01
+  rate inside each group. If I lose this week vs 2045 League Champ (the
+  other 2-8 team), 1.01 odds are ~95%. If I win, ~52%. One game nearly
+  decides it.
+- ✅ **Model assumptions vs reality.** The sim assumes best lineups. My actual
+  set lineup was 5.6 projected points lower (McCord over Milton, Bech/Allen
+  over Lane/Bell), which dropped win odds from 29% to 23%. Checking
+  McGowan showed the same thing: the model had him benched, but 2045
+  actually started him. Close to kickoff, real set lineups beat assumed
+  ones.
+- ✅ **Small samples lie.** Per-player "beat their projection" records were
+  1-9 games each. One 11-point week from Cyrus Allen flips his whole
+  average. That's why the sim pools misses by position instead.
+- ✅ **Test a new factor before adding it (defense test).** Rated defenses on
+  weeks 1-5, then checked weeks 6-10. Players vs "soft" defenses did NOT
+  beat projections (actually ~1 pt under). Projections already include the
+  matchup, so adding a defense adjustment would double count.
+  Splitting weeks so the same data isn't used to both build and test the
+  idea is a pattern worth reusing.
+- **Regression to the mean.** Defenses that looked soft early mostly
+  played closer to average later. Early-season extremes are partly luck.
+
+### Questions / still confused about ❓
+
+- ❓ Bylaws ban benching "obvious starters" to tank. Where's the line on the
+  marginal spots? That's a commissioner/league call, not a data question.
+
+### Next time
+
+Start `analysis/consistency.py` Step 1 (boom-bust project). I write the
+code this time.
+
+---
+
+## Session 2026-11-23: Draft board finished (Steps 2b + 2c, Claude's agents wrote it)
+
+Also asked whether I could pull Sleeper rookie ADP for the last 5 years.
+Answer: no ADP endpoint, and no way to search all drafts. You can only look
+up drafts by draft_id, league_id or user_id, so you'd have to crawl league
+by league. Scratched the idea.
+
+I asked Claude to split this across 3 agents (one per layer) instead of
+writing it myself. Still need to read through what they wrote.
+
+### What we built
+
+- **Third tiebreaker (2c):** tied on record AND Max PF -> higher PF picks earlier.
+- **`get_winners_bracket()`** in sleeper.py (the `/winners_bracket` endpoint).
+- **`get_draft_order()`** in calculations.py: slot 1-12 for every team.
+  1-6 = non-playoff teams (13 - rank). 7-12 = playoff bracket, filled in
+  the order teams get knocked out, still-alive teams projected.
+- **`draft_order` table** (season, roster_id, slot, projected) +
+  `insert_draft_order()`, added to `refresh_all_data()`.
+- **Board:** route joins `draft_order` instead of `standings`, 13th "Comp"
+  column with the 1.13 tile (start/sit leader), "Projected" badge only
+  while something can still change.
+
+### New concepts learned
+
+- ✅ **Flip one sort column by negating it.** Python's sort has ONE
+  `reverse` flag, so for "wins ASC, max_pf ASC, pf DESC" you sort by
+  `(wins, max_pf, -pf)`. Same as mixing ASC/DESC in an ORDER BY.
+- ✅ **One helper, two uses.** `draft_priority_key()` is the bylaws tiebreak
+  for both the bottom 6 AND teams knocked out in the same playoff round.
+- ✅ **Split "fetch" from "logic" to test it.** `get_draft_order()` only does
+  API calls, `build_draft_order()` does the math. So you can hand it a fake
+  half-played bracket and check the answer without waiting for Week 15.
+- **Sleeper's bracket has placement games** (`"p"` key: 1 = final,
+  3 = 3rd place, 5 = 5th place). Bylaws ignore 3rd/5th for the draft, so
+  the code skips any game with a `p` other than 1.
+- **A test league with a known answer.** The test league's 2025 season is
+  finished, so its bracket is a free answer key.
+
+### Mistakes & fixes
+
+- Agents found that plain `python` doesn't have `requests`/apscheduler.
+  Need `venv/Scripts/python.exe` (or activate the venv first).
+- Importing `app` starts the scheduler, which kicks off a full Sleeper refresh
+  right away. Testing with Flask's test client meant swapping in a
+  do-nothing scheduler.
+
+### Questions / still confused about ❓
+
+- ❓ **Week 15 check:** does Sleeper add playoff points (and playoff W/L) into
+  season PF / Max PF / record? The test league's records add up to ~28
+  games, which smells like it. If yes, tiebreakers and the 1.13 award need
+  the Week 14 numbers.
+- ❓ `start_sit` rows are tagged with the week *in progress*, so the "week 14"
+  snapshot might be mid-week. The comp tile stays "projected" until a
+  week 15+ snapshot exists.
+
+### Code snippets worth remembering
+
+```python
+def draft_priority_key(wins, max_pf, pf):
+    return (wins, max_pf, -pf)   # sort ascending = earliest pick first; -pf flips just that column
+```
+
 ---
 
 # Socratic Tutor Sessions 🧠
